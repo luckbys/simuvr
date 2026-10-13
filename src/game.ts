@@ -10,7 +10,7 @@ import { PhysicsWorld } from './physics/world';
 import { Vehicle } from './physics/vehicle/vehicle';
 import { HANABI_200S } from './physics/carSpec';
 import { defaultTuning, resolveVehicleParams, type TuningState } from './physics/tuning';
-import { CarView, defaultLook } from './car/carView';
+import { CarView } from './car/carView';
 import { makeNightEnvironment } from './city/envMap';
 import { buildTestArena } from './city/testArena';
 import { buildCity, type City } from './city/city';
@@ -18,8 +18,10 @@ import { Hud } from './ui/hud';
 import { Cockpit } from './car/cockpit';
 import { VrMode } from './xr/vrMode';
 import { Garage } from './garage/garage';
+import { loadGarage } from './garage/state';
 import { AudioSystem } from './audio/audioSystem';
 import { Fx } from './fx/fx';
+import { PerfGovernor, type PerfLevel } from './core/perfGovernor';
 
 export class Game {
   readonly quality: QualitySettings;
@@ -41,6 +43,8 @@ export class Game {
   readonly garage = new Garage();
   audio: AudioSystem | null = null;
   readonly fx: Fx;
+  readonly perf = new PerfGovernor();
+  private readonly headlights: THREE.SpotLight[] = [];
   private camBeforeGarage: import('./core/cameras').CamMode = 'chase';
 
   tuning: TuningState = defaultTuning();
@@ -103,7 +107,7 @@ export class Game {
 
     const params = resolveVehicleParams(HANABI_200S, this.tuning);
     this.vehicle = new Vehicle(physics, params, this.world.spawn, { abs: true, steerAssist: 0.45, autoGear: true });
-    this.carView = new CarView(HANABI_200S, defaultLook());
+    this.carView = new CarView(HANABI_200S, loadGarage().look, { physical: this.quality.physicalMaterials, lod: 'high' });
     this.carView.setEnvironment(this.env);
     scene.add(this.carView.root);
     this.addHeadlights();
@@ -138,13 +142,21 @@ export class Game {
         quality: this.quality,
         layout: this.city?.layout ?? null,
         setAutoGear: (a) => { this.vehicle.options.autoGear = a; },
+        resetCar: () => this.resetCar(),
         garage: this.garage,
         debugText: () => this.debug.summary,
         exitVr: () => this.xr.exit(),
       });
       this.vr.onSessionStart();
+      // A meta de tempo de quadro segue a taxa real do headset (72/90/120 Hz).
+      const rate = this.xr.session?.frameRate ?? this.quality.xrFrameRate;
+      this.perf.setTarget(1000 / (rate || this.quality.xrFrameRate));
     };
-    this.xr.onEnd = () => this.vr?.onSessionEnd();
+    this.xr.onEnd = () => {
+      this.vr?.onSessionEnd();
+      this.perf.level = 0;
+      this.applyPerfLevel(0);
+    };
   }
 
   static async create(host: HTMLElement): Promise<Game> {
@@ -183,10 +195,21 @@ export class Game {
     this.cameras.snap();
   }
 
+  /** Aplica o nível do governador de desempenho (só em VR): 1 sem retrovisor/chuva; 2 sem faróis reais; 3 sem partículas. */
+  applyPerfLevel(level: PerfLevel): void {
+    this.cockpit.mirrorEnabled = level < 1;
+    this.fx.setLevel(level);
+    for (const l of this.headlights) l.visible = level < 2;
+    console.info(`[desempenho] nível ${level} (média ${this.perf.avgMs.toFixed(1)} ms)`);
+  }
+
   /** Faróis: dois SpotLights presos ao carro (sem sombra). */
   private addHeadlights(): void {
+    // No tier baixo os faróis são só halos + mancha de luz (CarLights); SpotLight real custa em toda superfície PBR.
+    if (!this.quality.headlightSpots) return;
     for (const sx of [-0.52, 0.52]) {
       const spot = new THREE.SpotLight(0xfff0d6, 420, 70, 0.5, 0.55, 1.6);
+      this.headlights.push(spot);
       spot.position.set(sx, 0.25, -2.0);
       const target = new THREE.Object3D();
       target.position.set(sx * 0.6, -0.1, -22);
@@ -228,6 +251,8 @@ export class Game {
 
   private readonly skyPos = new THREE.Vector3();
 
+  private flipTimer = 0;
+  private readonly tmpUp = new THREE.Vector3();
   private readonly aPos = new THREE.Vector3();
   private readonly aFwd = new THREE.Vector3();
   private readonly aUp = new THREE.Vector3();
@@ -278,9 +303,22 @@ export class Game {
       this.shiftDownPending ||= src.shiftDown;
     }
 
+    if (presenting) {
+      const lvl = this.perf.push(dt * 1000, dt);
+      if (lvl !== null) this.applyPerfLevel(lvl);
+    }
+
     const alpha = this.stepper.advance(dt);
     this.world.sync();
     this.carView.update(this.vehicle, alpha);
+
+    // Capotou e parou: endireita sozinho depois de uns segundos (em VR não há tecla R).
+    const upY = this.tmpUp.set(0, 1, 0).applyQuaternion(this.carView.root.quaternion).y;
+    this.flipTimer = upY < 0.3 && this.vehicle.speedKmh < 8 ? this.flipTimer + dt : 0;
+    if (this.flipTimer > 2.5) {
+      this.vehicle.uprightInPlace();
+      this.flipTimer = 0;
+    }
 
     // Volante visual no PC: acompanha o esterço (±270°).
     if (!presenting) {

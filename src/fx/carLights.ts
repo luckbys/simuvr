@@ -25,7 +25,7 @@ export class CarLights {
     car.root.add(this.halos);
 
     // Mancha de luz dos faróis no asfalto (aditiva, achatada), presa ao carro.
-    this.pool = new THREE.Mesh(new THREE.PlaneGeometry(7, 15), additiveMaterial(0xfff0d0, 0.22));
+    this.pool = new THREE.Mesh(new THREE.PlaneGeometry(7, 15), additiveMaterial(0xfff0d0, 0.14));
     this.pool.rotation.x = -Math.PI / 2;
     this.pool.position.set(0, y(0.03), -L2 - 6.5);
     this.pool.renderOrder = 2;

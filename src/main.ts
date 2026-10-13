@@ -1,4 +1,5 @@
 import { Game } from './game';
+import { saveQuality, storedQuality } from './core/quality';
 import { GarageUi } from './ui/garageUi';
 import { EngineSynth } from './audio/engineSynth';
 
@@ -10,6 +11,17 @@ async function boot(): Promise<void> {
   const vr = $<HTMLButtonElement>('btn-vr');
   const start = $('start');
 
+  // Seletor de qualidade: grava a escolha e recarrega (o tier define geometria, luzes e materiais).
+  const qsel = $<HTMLSelectElement>('quality');
+  qsel.value = storedQuality() ?? 'auto';
+  qsel.addEventListener('change', () => {
+    saveQuality(qsel.value === 'auto' ? null : (qsel.value as 'low' | 'high'));
+    location.href = location.pathname; // sem ?q= para valer a escolha salva
+  });
+
+  // A construção da cidade ocupa a thread por ~1 s: avisa e cede um quadro para a mensagem aparecer.
+  status.textContent = 'Construindo a cidade…';
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   const game = await Game.create($('app'));
   (window as unknown as { __game: Game }).__game = game;
   new GarageUi(game);

@@ -159,6 +159,7 @@ try {
   assert(true, 'garagem abre em VR (painel visível)');
   assert(await page.evaluate(() => !window.__game.vr.menuOpen), 'o menu fecha ao abrir a garagem');
 
+  await page.screenshot({ path: 'test-results/vr-03a-garagem-visual.png' }); // aba Visual (a mais alta)
   const driftRow = await rowOf('garagePanel', 'segments', 'Drift');
   const dr = await aim('garagePanel', driftRow, 1);
   assert(dr.ok, 'raio acerta a predefinição Drift');

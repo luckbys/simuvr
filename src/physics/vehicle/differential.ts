@@ -40,10 +40,20 @@ export function lockMagnitude(d: DiffSpec, pinionTorque: number): number {
  * Torque que passa da roda mais rápida para a mais lenta, e sua derivada em relação à
  * diferença de rotação `dw = ωL − ωR` (usada na integração implícita).
  */
-export function lockTorque(d: DiffSpec, pinionTorque: number, dw: number): { lk: number; slope: number } {
+export function lockTorque(
+  d: DiffSpec,
+  pinionTorque: number,
+  dw: number,
+  out: { lk: number; slope: number } = { lk: 0, slope: 0 },
+): { lk: number; slope: number } {
   const mag = lockMagnitude(d, pinionTorque);
-  if (mag <= 0) return { lk: 0, slope: 0 };
-  const x = dw / d.width;
-  const th = Math.tanh(x);
-  return { lk: mag * th, slope: (mag / d.width) * (1 - th * th) };
+  if (mag <= 0) {
+    out.lk = 0;
+    out.slope = 0;
+    return out;
+  }
+  const th = Math.tanh(dw / d.width);
+  out.lk = mag * th;
+  out.slope = (mag / d.width) * (1 - th * th);
+  return out;
 }

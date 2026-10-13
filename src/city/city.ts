@@ -12,7 +12,7 @@ import { buildLamps } from './lamps';
 import { buildRoads, CURB_HEIGHT } from './road';
 import { buildMeetSpot } from './meetSpot';
 import { buildSky } from './sky';
-import { buildCones } from './testArena';
+import { buildBarrels, buildCones } from './testArena';
 
 export interface City {
   group: THREE.Group;
@@ -38,8 +38,8 @@ export function buildCity(pw: PhysicsWorld, quality: QualitySettings, env: THREE
   for (const o of buildMeetSpot(pw, layout, env)) group.add(o);
 
   // Carros parados do encontro (instanciados).
-  const geo = buildCarGeometries(dimsOf(HANABI_200S));
-  group.add(new InstancedCars(geo, dimsOf(HANABI_200S), layout.carSlots, env).group);
+  const geo = buildCarGeometries(dimsOf(HANABI_200S), quality.carLod);
+  group.add(new InstancedCars(geo, dimsOf(HANABI_200S), layout.carSlots, env, quality.physicalMaterials).group);
 
   const sky = buildSky();
 
@@ -71,6 +71,16 @@ export function buildCity(pw: PhysicsWorld, quality: QualitySettings, env: THREE
   const cones = buildCones(pw, spots);
   group.add(cones.mesh);
 
+  // Barris em pilha (pirâmide de 6) na frente do palco, para derrubar.
+  const st = layout.stage;
+  const bx = st.x0 - 8;
+  const barrelSpots: [number, number, number][] = [];
+  for (let row = 0; row < 3; row++) {
+    for (let k = 0; k < 3 - row; k++) barrelSpots.push([bx, 0.45 + row * 0.9, cz + 8 + (k + row * 0.5) * 0.62]);
+  }
+  const barrels = buildBarrels(pw, barrelSpots);
+  group.add(barrels.mesh);
+
   const probe = new THREE.Vector3((m.x0 + m.x1) / 2 - 10, 2.2, cz);
 
   return {
@@ -78,7 +88,10 @@ export function buildCity(pw: PhysicsWorld, quality: QualitySettings, env: THREE
     layout,
     spawn: layout.spawn,
     sky,
-    sync: cones.sync,
+    sync: () => {
+      cones.sync();
+      barrels.sync();
+    },
     captureEnvironment(renderer, scene, size) {
       const rt = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
       const cam = new THREE.CubeCamera(0.1, 1400, rt);

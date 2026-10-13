@@ -13,7 +13,7 @@ const SPOILER_IDS = ['lip', 'gt', 'wing'] as const;
 export class InstancedCars {
   readonly group = new THREE.Group();
 
-  constructor(geo: CarGeometries, d: CarDims, slots: CarSlot[], env: THREE.Texture | null) {
+  constructor(geo: CarGeometries, d: CarDims, slots: CarSlot[], env: THREE.Texture | null, physical = true) {
     const n = slots.length;
     const paintGeo = mergeNoUv([geo.body, geo.roof, geo.flares]);
     const darkGeo = mergeNoUv([geo.trim, geo.exhaust, geo.interior]);
@@ -31,12 +31,13 @@ export class InstancedCars {
       return m;
     };
 
-    const paintMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, metalness: 0.7, roughness: 0.26, clearcoat: 0.9, clearcoatRoughness: 0.08,
-      envMap: env, envMapIntensity: 1.4, side: THREE.DoubleSide,
-    });
+    const paintBase = { color: 0xffffff, metalness: 0.7, roughness: 0.26, envMap: env, envMapIntensity: 1.4, side: THREE.DoubleSide };
+    const paintMat = physical
+      ? new THREE.MeshPhysicalMaterial({ ...paintBase, clearcoat: 0.9, clearcoatRoughness: 0.08 })
+      : new THREE.MeshStandardMaterial(paintBase);
     const paint = mk(paintGeo, paintMat, n);
-    const glass = mk(geo.glass, new THREE.MeshPhysicalMaterial({ color: 0x07090d, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.85, envMap: env, envMapIntensity: 1.2 }), n);
+    const glassParams = { color: 0x07090d, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.85, envMap: env, envMapIntensity: 1.2 };
+    const glass = mk(geo.glass, physical ? new THREE.MeshPhysicalMaterial(glassParams) : new THREE.MeshStandardMaterial(glassParams), n);
     const dark = mk(darkGeo, new THREE.MeshStandardMaterial({ color: 0x101016, roughness: 0.65, metalness: 0.3, side: THREE.DoubleSide, envMap: env, envMapIntensity: 0.6 }), n);
     const lights = mk(lightsGeo, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), n);
     const tires = mk(geo.tire, new THREE.MeshStandardMaterial({ color: 0x08080a, roughness: 0.92 }), n * 4);

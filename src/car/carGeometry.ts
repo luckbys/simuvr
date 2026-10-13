@@ -150,7 +150,10 @@ export interface CarGeometries {
   steeringWheel: THREE.BufferGeometry;
 }
 
-export function buildCarGeometries(d: CarDims): CarGeometries {
+export type CarLod = 'low' | 'high';
+
+export function buildCarGeometries(d: CarDims, lod: CarLod = 'high'): CarGeometries {
+  const hi = lod === 'high';
   const h2y = (h: number) => h - d.comHeight;
   const L2 = d.length / 2;
 
@@ -172,7 +175,7 @@ export function buildCarGeometries(d: CarDims): CarGeometries {
     { z: L2 - 0.08, hb: 0.24, ht: 0.92, hw: 0.72 },
     { z: L2, hb: 0.3, ht: 0.84, hw: 0.6 },
   ];
-  const body = openTop(orientOutward(loft(bodySt, h2y, 3.6)), -0.601, 1.461, h2y(0.66));
+  const body = openTop(orientOutward(loft(bodySt, h2y, 3.6, hi ? 28 : 16)), -0.601, 1.461, h2y(0.66));
 
   // ----- Cabine (vidros) e teto -----
   const cabinSt: Station[] = [
@@ -183,7 +186,7 @@ export function buildCarGeometries(d: CarDims): CarGeometries {
     { z: 1.28, hb: 0.88, ht: 1.08, hw: 0.7 },
     { z: 1.5, hb: 0.9, ht: 0.94, hw: 0.76 },
   ];
-  const glass = orientOutward(loft(cabinSt, h2y, 3.0, 24));
+  const glass = orientOutward(loft(cabinSt, h2y, 3.0, hi ? 24 : 14));
 
   // Chapa do teto: cabe na parte plana do vidro (z de -0,05 a 0,8) e fica assentada nele.
   const roof = new THREE.BoxGeometry(1.1, 0.03, 0.86);
@@ -213,7 +216,7 @@ export function buildCarGeometries(d: CarDims): CarGeometries {
     [-d.trackRear / 2, d.rearAxleZ, d.wheelWidth + 0.06],
     [d.trackRear / 2, d.rearAxleZ, d.wheelWidth + 0.06],
   ] as const) {
-    const fl = new THREE.CylinderGeometry(flareR, flareR, w, 20, 1, true, -Math.PI * 0.62, Math.PI * 1.24);
+    const fl = new THREE.CylinderGeometry(flareR, flareR, w, hi ? 20 : 10, 1, true, -Math.PI * 0.62, Math.PI * 1.24);
     // eixo do cilindro de Y para X; abertura voltada para baixo
     fl.rotateZ(Math.PI / 2);
     fl.rotateX(0);
@@ -237,8 +240,8 @@ export function buildCarGeometries(d: CarDims): CarGeometries {
   const taillights = mergeGeometries(tl)!;
 
   // ----- Rodas -----
-  const tire = buildTire(d.wheelRadius, d.wheelWidth);
-  const rim = buildRim(d.wheelRadius * 0.7, d.wheelWidth * 0.84);
+  const tire = buildTire(d.wheelRadius, d.wheelWidth, hi ? 28 : 16);
+  const rim = buildRim(d.wheelRadius * 0.7, d.wheelWidth * 0.84, hi ? 28 : 16);
 
   // ----- Spoilers -----
   const spoilers = {
@@ -327,7 +330,7 @@ function buildWing(
 }
 
 /** Pneu com ombro arredondado, eixo ao longo de X. */
-function buildTire(radius: number, width: number): THREE.BufferGeometry {
+function buildTire(radius: number, width: number, segs: number): THREE.BufferGeometry {
   const inner = radius * 0.62;
   const hw = width / 2;
   const pts: THREE.Vector2[] = [];
@@ -339,14 +342,14 @@ function buildTire(radius: number, width: number): THREE.BufferGeometry {
   pts.push(new THREE.Vector2(radius * 0.97, hw * 0.92));
   pts.push(new THREE.Vector2(radius * 0.86, hw));
   pts.push(new THREE.Vector2(inner, hw * 0.82));
-  const g = new THREE.LatheGeometry(pts, 28);
+  const g = new THREE.LatheGeometry(pts, segs);
   g.rotateZ(Math.PI / 2);
   g.computeVertexNormals();
   return g;
 }
 
 /** Roda de 5 raios com aro e prato côncavo, eixo ao longo de X. */
-function buildRim(radius: number, width: number): THREE.BufferGeometry {
+function buildRim(radius: number, width: number, segs: number): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const hw = width / 2;
   // aro
@@ -357,12 +360,12 @@ function buildRim(radius: number, width: number): THREE.BufferGeometry {
       new THREE.Vector2(radius, hw * 0.9),
       new THREE.Vector2(radius * 0.86, hw),
     ],
-    28,
+    segs,
   );
   barrel.rotateZ(Math.PI / 2);
   parts.push(barrel);
   // prato
-  const dish = new THREE.CylinderGeometry(radius * 0.9, radius * 0.9, 0.02, 28);
+  const dish = new THREE.CylinderGeometry(radius * 0.9, radius * 0.9, 0.02, segs);
   dish.rotateZ(Math.PI / 2);
   dish.translate(hw * 0.78, 0, 0);
   parts.push(dish);
@@ -373,7 +376,7 @@ function buildRim(radius: number, width: number): THREE.BufferGeometry {
     sp.rotateX((i * 2 * Math.PI) / 5);
     parts.push(sp);
   }
-  const hub = new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, 0.05, 16);
+  const hub = new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, 0.05, Math.min(16, segs));
   hub.rotateZ(Math.PI / 2);
   hub.translate(hw * 0.9, 0, 0);
   parts.push(hub);

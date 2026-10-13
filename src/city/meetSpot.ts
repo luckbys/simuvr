@@ -66,8 +66,9 @@ export function buildMeetSpot(pw: PhysicsWorld, city: CityLayout, env: THREE.Tex
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(cx, 0.012, cz);
   out.push(floor);
-  // Colisor do piso: concreto, ligeiramente acima do asfalto molhado.
-  pw.addBox([cx, -0.0, cz], [W / 2, 0.05, D / 2], { surface: 'concrete' });
+  // Colisor do piso: concreto, com o topo exatamente no piso visível (y = 0,012) e acima do asfalto (y = 0),
+  // para o raio das rodas acertar o concreto e o carro não rodar flutuando sobre o que se vê.
+  pw.addBox([cx, 0.012 - 0.05, cz], [W / 2, 0.05, D / 2], { surface: 'concrete' });
 
   // ---- Palco ----
   const sx = (stage.x0 + stage.x1) / 2;
@@ -175,6 +176,31 @@ export function buildMeetSpot(pw: PhysicsWorld, city: CityLayout, env: THREE.Tex
   }
   out.push(...buildLamps(lamps));
   for (const l of lamps) pw.addBox([l.x, 4.3, l.z], [0.2, 4.3, 0.2], { surface: 'concrete' });
+
+  // ---- Rampa de salto no meio do pátio (sobe para +X) ----
+  {
+    const pitch = 0.14;
+    const len = 10, wid = 6.4, thick = 0.3;
+    const rx = meet.x0 + 100, rz = cz;
+    // A ponta baixa afunda no piso (topo rente a y = 0,012): sem degrau na entrada da rampa.
+    const cy = (len / 2) * Math.sin(pitch) - (thick / 2) * Math.cos(pitch) + 0.012;
+    const yaw = -Math.PI / 2; // a frente da rampa (−Z local) aponta para +X
+    pw.addBox([rx, cy, rz], [wid / 2, thick / 2, len / 2], { yaw, pitch, surface: 'concrete' });
+    const ramp = new THREE.Mesh(
+      new THREE.BoxGeometry(wid, thick, len),
+      new THREE.MeshStandardMaterial({ color: 0x2b2740, roughness: 0.55, metalness: 0.2, envMap: env, envMapIntensity: 0.7 }),
+    );
+    ramp.position.set(rx, cy, rz);
+    ramp.rotation.set(pitch, yaw, 0, 'YXZ');
+    out.push(ramp);
+    // Faixas de neon nas bordas da rampa.
+    const edge = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffb02f).multiplyScalar(2.6), toneMapped: false });
+    for (const side of [-1, 1]) {
+      const e = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, len), edge);
+      e.position.set(side * (wid / 2 - 0.05), thick / 2 + 0.03, 0);
+      ramp.add(e);
+    }
+  }
 
   // ---- Portal de entrada: "BEM-VINDO AO SPOT" ----
   const gateTex = canvasTex(1024, 256, (g) => {

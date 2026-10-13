@@ -74,6 +74,42 @@ export function buildCones(pw: PhysicsWorld, spots: ReadonlyArray<readonly [numb
   return { mesh, sync };
 }
 
+/** Barris dinâmicos (corpo = caixa; visual = cilindro neon), para derrubar em pilha. */
+export function buildBarrels(pw: PhysicsWorld, spots: ReadonlyArray<readonly [number, number, number]>): { mesh: THREE.InstancedMesh; sync: () => void } {
+  const geo = new THREE.CylinderGeometry(0.29, 0.29, 0.9, 14);
+  const mesh = new THREE.InstancedMesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.5, emissive: 0x111118 }),
+    Math.max(1, spots.length),
+  );
+  const palette = [0x27e8ff, 0xff2fb3, 0xffb02f, 0x7a5cff];
+  const c = new THREE.Color();
+  const bodies = spots.map(([x, y, z], i) => {
+    mesh.setColorAt(i, c.set(palette[i % palette.length]!));
+    return pw.addDynamicBox([x, y, z], [0.28, 0.45, 0.28], 22);
+  });
+  mesh.count = bodies.length;
+  mesh.frustumCulled = false;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  const m4 = new THREE.Matrix4();
+  const p = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1);
+  const sync = () => {
+    for (let i = 0; i < bodies.length; i++) {
+      const t = bodies[i]!.translation();
+      const r = bodies[i]!.rotation();
+      p.set(t.x, t.y, t.z);
+      q.set(r.x, r.y, r.z, r.w);
+      m4.compose(p, q, one);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  sync();
+  return { mesh, sync };
+}
+
 export interface Arena {
   group: THREE.Group;
   /** Atualiza os cones dinâmicos a partir da física. */

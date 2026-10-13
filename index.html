@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#07060f" />
     <title>SimuVR — Noite Tuning</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307060f'/%3E%3Cpath d='M10 40h44l-6-14H20z' fill='none' stroke='%23ff2fb3' stroke-width='4' stroke-linejoin='round'/%3E%3Ccircle cx='22' cy='44' r='5' fill='%2327e8ff'/%3E%3Ccircle cx='42' cy='44' r='5' fill='%2327e8ff'/%3E%3C/svg%3E" />
     <style>
       :root {
         --bg: #07060f;
@@ -40,7 +41,12 @@
       .keys { font-size: .8rem; color: var(--dim); display: grid; grid-template-columns: repeat(2, auto);
         gap: 4px 18px; text-align: left; }
       .keys b { color: var(--ink); font-weight: 600; }
+      #start p.vrhint { font-size: .78rem; max-width: 62ch; }
+      #start p.vrhint b { color: var(--ink); }
 
+      label.q { font-size: .8rem; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+      label.q select { background: rgba(255,255,255,.06); color: var(--ink); border: 1px solid rgba(255,255,255,.25); border-radius: 8px;
+        padding: 6px 10px; font: inherit; }
       #hud { position: fixed; left: 0; right: 0; bottom: 0; display: none; justify-content: space-between;
         align-items: flex-end; padding: 16px 22px; pointer-events: none; z-index: 5; }
       #hud.on { display: flex; }
@@ -125,11 +131,20 @@
         <button class="cta" id="btn-play" disabled>Jogar no PC</button>
         <button class="cta vr" id="btn-vr" disabled>Entrar em VR</button>
       </div>
+      <label class="q">Qualidade
+        <select id="quality">
+          <option value="auto">Automática</option>
+          <option value="low">Baixa (Quest)</option>
+          <option value="high">Alta (PC)</option>
+        </select>
+      </label>
       <div class="keys">
         <span><b>W / ↑</b> acelerar</span><span><b>S / ↓</b> freiar / ré</span>
         <span><b>A D / ← →</b> direção</span><span><b>Espaço</b> freio de mão</span>
         <span><b>Shift / Ctrl</b> marcha +/−</span><span><b>G</b> garagem de tuning</span>
       </div>
+      <p class="vrhint"><b>VR:</b> gatilho direito acelera · esquerdo freia · segure o <b>grip</b> perto do aro para pegar o volante e gire a mão ·
+        <b>X</b> freio de mão · <b>A/B</b> marchas · <b>Y</b> menu (segure para sair do carro)</p>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

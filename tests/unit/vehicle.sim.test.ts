@@ -1,9 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import { HANABI_200S } from '../../src/physics/carSpec';
-import { defaultTuning, driftTuning, type TuningState } from '../../src/physics/tuning';
+import { defaultTuning, driftTuning, resolveVehicleParams, type TuningState } from '../../src/physics/tuning';
 import { finiteState, KMH, makeSim } from './simHelpers';
 
 const G = 9.81;
+
+describe('aplicar tuning ao vivo', () => {
+  it('trocar o tuning muitas vezes não acumula colisores no chassi e atualiza massa e altura', async () => {
+    const sim = await makeSim();
+    expect(sim.car.body.numColliders()).toBe(2);
+    const mass0 = sim.car.params.mass;
+    for (let i = 0; i < 30; i++) {
+      sim.car.setParams(resolveVehicleParams(HANABI_200S, { ...defaultTuning(), rideHeightDrop: (i % 9) * 0.01, weightReduction: i * 3 }));
+      sim.run(0.05, () => ({}));
+    }
+    expect(sim.car.body.numColliders()).toBe(2);
+    expect(sim.car.params.mass).toBeLessThan(mass0);
+    sim.run(3, () => ({}));
+    expect(finiteState(sim)).toBe(true);
+    expect(Math.abs(sim.car.speed)).toBeLessThan(0.05);
+    expect(sim.pos().y).toBeCloseTo(sim.car.params.comHeightStatic, 1);
+  });
+});
+
+describe('recuperação de capotagem', () => {
+  it('endireitar no lugar devolve um carro de cabeça para baixo às rodas, mantendo posição e direção', async () => {
+    const sim = await makeSim();
+    sim.run(1, () => ({}));
+    // vira o carro de cabeça para baixo (180° em torno do eixo longitudinal) a 2 m de altura
+    sim.car.body.setTranslation({ x: 3, y: 2, z: -10 }, true);
+    sim.car.body.setRotation({ x: 0, y: 0, z: 1, w: 0 }, true);
+    sim.car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    sim.run(2, () => ({}));
+    expect(sim.pos().y).toBeLessThan(1.2); // caiu e ficou capotado
+    sim.car.uprightInPlace();
+    sim.run(3, () => ({}));
+    const p = sim.pos();
+    expect(finiteState(sim)).toBe(true);
+    expect(Math.abs(p.x - 3)).toBeLessThan(0.5);
+    expect(Math.abs(p.z + 10)).toBeLessThan(0.5);
+    expect(Math.abs(sim.rollAngle())).toBeLessThan(0.05);
+    expect(sim.car.wheels.every((w) => w.contact)).toBe(true);
+    expect(sim.pos().y).toBeCloseTo(sim.car.params.comHeightStatic, 1);
+  });
+});
 
 describe('veículo parado', () => {
   it('assenta sem deslizar, na altura certa e com a carga somando o peso', async () => {

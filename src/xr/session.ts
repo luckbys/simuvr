@@ -36,8 +36,8 @@ export class XrSessionManager {
   async enter(): Promise<void> {
     if (this.state !== 'available' || !navigator.xr) return;
     const session = await navigator.xr.requestSession('immersive-vr', {
+      // Só o necessário: pedir recursos extras (hand-tracking, layers) faz o Quest exibir pedidos de permissão.
       requiredFeatures: ['local-floor'],
-      optionalFeatures: ['bounded-floor', 'hand-tracking', 'layers'],
     });
     session.addEventListener('end', () => {
       this.session = null;

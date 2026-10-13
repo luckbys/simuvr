@@ -52,6 +52,8 @@ export class RearMirror {
 export class Cockpit {
   readonly gauge: THREE.Mesh;
   readonly mirror: RearMirror | null;
+  /** Desligado pelo governador de desempenho quando o headset não aguenta. */
+  mirrorEnabled = true;
   private readonly canvas = document.createElement('canvas');
   private readonly g = this.canvas.getContext('2d')!;
   private readonly tex: THREE.CanvasTexture;
@@ -198,7 +200,7 @@ export class Cockpit {
 
   /** Atualiza o retrovisor (se ativo). Chamar uma vez por quadro, antes do render principal. */
   renderMirror(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
-    this.mirror?.render(renderer, scene);
+    if (this.mirrorEnabled) this.mirror?.render(renderer, scene);
   }
 
   dispose(): void {

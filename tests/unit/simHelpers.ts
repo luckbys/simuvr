@@ -11,6 +11,8 @@ export const DT = 1 / HZ;
 export const KMH = 1 / 3.6;
 
 export interface Sim {
+  /** Passo de simulação (s) desta instância. */
+  dt: number;
   pw: PhysicsWorld;
   car: Vehicle;
   t: number;
@@ -26,23 +28,25 @@ export interface Sim {
 
 export async function makeSim(
   tuning: TuningState = defaultTuning(),
-  opts: { surface?: SurfaceId; options?: Partial<VehicleOptions> } = {},
+  opts: { surface?: SurfaceId; options?: Partial<VehicleOptions>; hz?: number } = {},
 ): Promise<Sim> {
+  const hz = opts.hz ?? HZ;
+  const dt = 1 / hz;
   const pw = await PhysicsWorld.create();
   pw.addGround(3000, opts.surface ?? 'asphalt');
   const params = resolveVehicleParams(HANABI_200S, tuning);
   const car = new Vehicle(pw, params, { x: 0, z: 0 }, { abs: true, steerAssist: 0, autoGear: true, ...opts.options });
   const sim: Sim = {
-    pw, car, t: 0,
+    dt, pw, car, t: 0,
     step(input) {
       const i: DriveInput = { ...emptyInput(), ...input };
-      car.update(DT, i);
-      pw.step(DT);
+      car.update(dt, i);
+      pw.step(dt);
       car.postStep();
-      sim.t += DT;
+      sim.t += dt;
     },
     run(seconds, fn, each) {
-      const n = Math.round(seconds * HZ);
+      const n = Math.round(seconds * hz);
       for (let k = 0; k < n; k++) {
         sim.step(fn(sim.t));
         if (each && each(sim.t) === false) return;

@@ -18,6 +18,14 @@ export interface QualitySettings {
   detail: number;
   /** Frequência-alvo preferida no Quest (Hz). */
   xrFrameRate: number;
+  /** Faróis com SpotLight real (caro: toda superfície PBR avalia a luz). No baixo ficam só os halos e a mancha de luz. */
+  headlightSpots: boolean;
+  /** Pintura com verniz (MeshPhysicalMaterial) em vez de MeshStandardMaterial. */
+  physicalMaterials: boolean;
+  /** Detalhe da geometria dos carros (segmentos de loft, pneus e aros). */
+  carLod: 'low' | 'high';
+  /** Máximo de partículas de fumaça. */
+  smokeMax: number;
 }
 
 export const QUALITY: Record<QualityName, QualitySettings> = {
@@ -32,6 +40,10 @@ export const QUALITY: Record<QualityName, QualitySettings> = {
     envMapSize: 128,
     detail: 0.55,
     xrFrameRate: 72,
+    headlightSpots: false,
+    physicalMaterials: false,
+    carLod: 'low',
+    smokeMax: 48,
   },
   high: {
     name: 'high',
@@ -44,6 +56,10 @@ export const QUALITY: Record<QualityName, QualitySettings> = {
     envMapSize: 256,
     detail: 1,
     xrFrameRate: 90,
+    headlightSpots: true,
+    physicalMaterials: true,
+    carLod: 'high',
+    smokeMax: 110,
   },
 };
 
@@ -62,10 +78,22 @@ export function loadQuality(): QualityName {
   return /OculusBrowser|Quest|Mobile/i.test(navigator.userAgent) ? 'low' : 'high';
 }
 
-export function saveQuality(name: QualityName): void {
+/** Grava a escolha do jogador; `null` volta ao automático (Quest = baixo, PC = alto). */
+export function saveQuality(name: QualityName | null): void {
   try {
-    localStorage.setItem(KEY, name);
+    if (name === null) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, name);
   } catch {
     /* ignorar */
+  }
+}
+
+/** Escolha salva (ou null se automático). */
+export function storedQuality(): QualityName | null {
+  try {
+    const v = localStorage.getItem(KEY);
+    return v === 'low' || v === 'high' ? v : null;
+  } catch {
+    return null;
   }
 }

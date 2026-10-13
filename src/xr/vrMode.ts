@@ -18,6 +18,8 @@ export interface VrHost {
   quality: QualitySettings;
   layout: CityLayout | null;
   setAutoGear(auto: boolean): void;
+  /** Reposiciona o carro no ponto de partida. */
+  resetCar(): void;
   garage: Garage;
   debugText(): string;
   exitVr(): void;
@@ -92,6 +94,7 @@ export class VrMode {
   private recenterIn = 0.6;
   private snapCooldown = 0;
   private yHeld = 0;
+  private yConsumed = false;
   /** Verdadeiro depois do primeiro recentrar: o banco do motorista está calibrado. */
   seated = false;
   private time = 0;
@@ -254,16 +257,17 @@ export class VrMode {
     if (L?.edge.stick && this.state === 'driving') this.recenter();
 
     // Y (botão B do controle esquerdo): toque curto abre o menu; segurar 1 s (parado) sai do carro.
+    // `yConsumed` marca a pressão que já virou "sair do carro": ao soltar, não abre o menu.
     if (L?.down.b) this.yHeld += dt;
     if (L?.edge.bUp) {
-      if (this.yHeld < 0.5) this.toggleMenu();
+      if (!this.yConsumed && this.yHeld < 0.5) this.toggleMenu();
       this.yHeld = 0;
+      this.yConsumed = false;
     }
-    if (this.state === 'driving' && L?.down.b && this.host.vehicle.speedKmh < 6 && this.yHeld >= EXIT_HOLD) {
+    if (this.state === 'driving' && L?.down.b && !this.yConsumed && this.host.vehicle.speedKmh < 6 && this.yHeld >= EXIT_HOLD) {
       this.exitCar();
-      this.yHeld = -10; // evita reentrada e menu até soltar
+      this.yConsumed = true;
     }
-    if (!L?.down.b && this.yHeld < 0) this.yHeld = 0;
 
     if (this.state === 'driving') this.pollDriving(dt, drive, L, Rh);
     else this.pollWalking(dt, drive, L, Rh);
@@ -337,6 +341,8 @@ export class VrMode {
       drive.brake = 0;
       drive.handbrake = 1;
     }
+    // Contra-esterço assistido só no modo analógico (com o volante físico o jogador corrige sozinho).
+    veh.options.steerAssist = this.settings.steerMode === 'stick' ? 0.35 : 0;
     if (this.settings.steerMode === 'wheel') {
       drive.steer = this.wheel.steer;
     } else {
@@ -406,7 +412,7 @@ export class VrMode {
     this.hint.mesh.visible = near && !this.menuOpen;
     if (near) {
       this.placeHint();
-      if (R?.edge.a || R?.edge.grip) this.enterCar();
+      if (R?.edge.a) this.enterCar();
     }
   }
 
@@ -433,19 +439,38 @@ export class VrMode {
     return this.tE.y;
   }
 
-  private tryMove(x: number, z: number): void {
+  /**
+   * Alguma coisa sólida em (x, z) para uma pessoa de raio `r`? Prédios, palco, carros parados do encontro,
+   * postes, o carro do jogador e o limite do mapa.
+   */
+  private blockedAt(x: number, z: number, r: number): boolean {
     const lay = this.host.layout;
     if (lay) {
-      const r = 0.35;
-      for (const b of lay.buildings) {
-        if (x > b.x - b.w / 2 - r && x < b.x + b.w / 2 + r && z > b.z - b.d / 2 - r && z < b.z + b.d / 2 + r) return;
-      }
       const e = lay.extent;
-      if (Math.abs(x) > e || Math.abs(z) > e) return;
+      if (Math.abs(x) > e || Math.abs(z) > e) return true;
+      for (const b of lay.buildings) {
+        if (x > b.x - b.w / 2 - r && x < b.x + b.w / 2 + r && z > b.z - b.d / 2 - r && z < b.z + b.d / 2 + r) return true;
+      }
+      const st = lay.stage;
+      if (x > st.x0 - r && x < st.x1 + r && z > st.z0 - r && z < st.z1 + r) return true;
+      // Carros parados: caixa de 1,76 × 4,3 m orientada pelo yaw da vaga.
+      for (const c of lay.carSlots) {
+        const dx = x - c.x, dz = z - c.z;
+        const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+        const lx = dx * cs - dz * sn;
+        const lz = dx * sn + dz * cs;
+        if (Math.abs(lx) < 0.88 + r && Math.abs(lz) < 2.15 + r) return true;
+      }
+      for (const l of lay.lamps) {
+        if (Math.abs(x - l.x) < 0.15 + r && Math.abs(z - l.z) < 0.15 + r) return true;
+      }
     }
-    // o carro é um obstáculo
     const root = this.host.carView.root;
-    if (Math.hypot(x - root.position.x, z - root.position.z) < 1.4) return;
+    return Math.hypot(x - root.position.x, z - root.position.z) < 1.4 + r * 0.3;
+  }
+
+  private tryMove(x: number, z: number): void {
+    if (this.blockedAt(x, z, 0.35)) return;
     this.walkPos.x = x;
     this.walkPos.z = z;
   }
@@ -498,14 +523,7 @@ export class VrMode {
   }
 
   private isWalkable(x: number, z: number): boolean {
-    const lay = this.host.layout;
-    if (!lay) return true;
-    for (const b of lay.buildings) {
-      if (x > b.x - b.w / 2 - 0.4 && x < b.x + b.w / 2 + 0.4 && z > b.z - b.d / 2 - 0.4 && z < b.z + b.d / 2 + 0.4) return false;
-    }
-    const root = this.host.carView.root;
-    if (Math.hypot(x - root.position.x, z - root.position.z) < 1.6) return false;
-    return Math.abs(x) < lay.extent && Math.abs(z) < lay.extent;
+    return !this.blockedAt(x, z, 0.4);
   }
 
   private teleportTo(target: THREE.Vector3): void {
@@ -712,6 +730,7 @@ export class VrMode {
         ],
       },
       { type: 'spacer', h: 8 },
+      { type: 'button', text: 'Reposicionar carro', accent: '#ffb02f', onClick: () => { this.host.resetCar(); this.closeMenu(); } },
       {
         type: 'button',
         text: () => (this.state === 'driving' ? 'Sair do carro (parado)' : 'Entrar no carro'),

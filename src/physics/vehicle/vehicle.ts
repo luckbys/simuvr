@@ -72,7 +72,8 @@ type Vec = { x: number; y: number; z: number };
 
 export class Vehicle {
   readonly body: RAPIER.RigidBody;
-  private collider!: RAPIER.Collider;
+  /** Colisores do chassi (carroceria baixa e cabine): recriados a cada mudança de tuning. */
+  private colliders: RAPIER.Collider[] = [];
   readonly wheels: WheelState[];
   readonly engine: Engine;
   readonly turbo: Turbo;
@@ -123,6 +124,13 @@ export class Vehicle {
   private readonly rhs = new Array<number>(3).fill(0);
   private readonly sol = new Array<number>(3).fill(0);
   private readonly xPrev = [0, 0, 0, 0];
+  // Vetores de trabalho do passo (evitam alocar arrays a 120 Hz e o lixo que isso gera no coletor).
+  private readonly spring = [0, 0, 0, 0];
+  private readonly slopes = [0, 0, 0, 0];
+  private readonly wA = [0, 0, 0, 0];
+  private readonly wRhs = [0, 0, 0, 0];
+  private readonly wDelta = [0, 0, 0, 0];
+  private readonly lock = { lk: 0, slope: 0 };
   // Para interpolação de renderização.
   private readonly prevPos = new THREE.Vector3();
   private readonly prevQuat = new THREE.Quaternion();
@@ -205,7 +213,9 @@ export class Vehicle {
   private applyChassis(): void {
     const R = this.pw.R;
     const p = this.params;
-    if (this.collider) this.pw.world.removeCollider(this.collider, false);
+    // Remove os dois colisores antigos (senão cada ajuste do tuning empilharia mais um no chassi).
+    for (const c of this.colliders) this.pw.world.removeCollider(c, false);
+    this.colliders = [];
 
     const b = p.body;
     const lowerH = 0.22;
@@ -216,13 +226,13 @@ export class Vehicle {
       .setDensity(0)
       .setFriction(0.35)
       .setRestitution(0.12);
-    this.collider = this.pw.world.createCollider(lower, this.body);
+    this.colliders.push(this.pw.world.createCollider(lower, this.body));
     const cabin = R.ColliderDesc.cuboid(b.width / 2 - 0.15, 0.2, b.length * 0.24)
       .setTranslation(0, bottom + 2 * lowerH + 0.2, b.length * 0.04)
       .setDensity(0)
       .setFriction(0.35)
       .setRestitution(0.12);
-    this.pw.world.createCollider(cabin, this.body);
+    this.colliders.push(this.pw.world.createCollider(cabin, this.body));
 
     this.body.setAdditionalMassProperties(
       p.mass,
@@ -264,6 +274,18 @@ export class Vehicle {
     this.captureTransform();
     this.prevPos.copy(this.curPos);
     this.prevQuat.copy(this.curQuat);
+  }
+
+  /** Endireita o carro onde está (mantém a posição e a direção), levantando-o um pouco, e zera as velocidades. */
+  uprightInPlace(): void {
+    const r = this.body.rotation();
+    const t = this.body.translation();
+    this.s.q.set(r.x, r.y, r.z, r.w);
+    this.s.fwd.set(0, 0, -1).applyQuaternion(this.s.q);
+    // Se a frente aponta quase na vertical, usa o lado para achar a direção no plano.
+    if (Math.hypot(this.s.fwd.x, this.s.fwd.z) < 0.2) this.s.fwd.set(1, 0, 0).applyQuaternion(this.s.q).applyAxisAngle(this.s.up.set(0, 1, 0), Math.PI / 2);
+    const yaw = Math.atan2(-this.s.fwd.x, -this.s.fwd.z);
+    this.reset(t.x, t.z, yaw, this.params.comHeightStatic + 0.6);
   }
 
   /** Lança o carro para frente a `speed` m/s já em `gear`, com rodas e motor coerentes. */
@@ -384,7 +406,8 @@ export class Vehicle {
     this.airborne = !anyContact;
 
     // Forças de mola/amortecedor com barra estabilizadora (por eixo).
-    const spring = [0, 0, 0, 0];
+    const spring = this.spring;
+    spring.fill(0);
     for (let i = 0; i < 4; i++) {
       const w = wheels[i]!;
       if (!w.contact) { this.xPrev[i] = 0; continue; }
@@ -407,7 +430,8 @@ export class Vehicle {
     }
 
     // ----- Pneus: passo 2 -----
-    const slopes = [0, 0, 0, 0];
+    const slopes = this.slopes;
+    slopes.fill(0);
     let maxSlip = 0;
     for (let i = 0; i < 4; i++) {
       const P = params.wheels[i]!;
@@ -596,8 +620,8 @@ export class Vehicle {
     const driveR = driveL + 1;
 
     // Freios e coeficientes implícitos por roda.
-    const A = [0, 0, 0, 0]; // I/dt + inclinação do pneu + inclinação do freio (N·m por rad/s)
-    const rhs = [0, 0, 0, 0]; // torque nas rodas, sem a transmissão
+    const A = this.wA; // I/dt + inclinação do pneu + inclinação do freio (N·m por rad/s)
+    const rhs = this.wRhs; // torque nas rodas, sem a transmissão
     for (let i = 0; i < 4; i++) {
       const P = params.wheels[i]!;
       const w = wheels[i]!;
@@ -659,7 +683,7 @@ export class Vehicle {
     // Diferencial: torque de travamento entre as rodas motrizes.
     const pinion = r * Tc * eta;
     const dw = wheels[driveL]!.omega - wheels[driveR]!.omega;
-    const { lk, slope: kLk } = lockTorque(params.diff, pinion, dw);
+    const { lk, slope: kLk } = lockTorque(params.diff, pinion, dw, this.lock);
 
     // Rodas não motrizes: equação escalar.
     for (let i = 0; i < 4; i++) {
@@ -703,7 +727,7 @@ export class Vehicle {
     wr.spin += wr.omega * dt;
 
     // Corrige as forças longitudinais com a variação de ω deste passo (consistência de momento).
-    const deltas = [0, 0, 0, 0];
+    const deltas = this.wDelta;
     deltas[driveL] = dwl;
     deltas[driveR] = dwr;
     for (let i = 0; i < 4; i++) {

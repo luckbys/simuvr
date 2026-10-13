@@ -3,7 +3,7 @@ import { HANABI_200S, type CarSpec } from '../physics/carSpec';
 import type { Vehicle } from '../physics/vehicle/vehicle';
 import type { VehicleParams } from '../physics/tuning';
 import { additiveMaterial } from '../fx/glow';
-import { buildCarGeometries, type CarGeometries, type CarDims } from './carGeometry';
+import { buildCarGeometries, type CarGeometries, type CarDims, type CarLod } from './carGeometry';
 
 export type PaintFinish = 'gloss' | 'metallic' | 'matte' | 'pearl' | 'chrome';
 
@@ -45,14 +45,20 @@ const FINISH: Record<PaintFinish, { metalness: number; roughness: number; clearc
   chrome: { metalness: 1, roughness: 0.06, clearcoat: 0 },
 };
 
-export function applyPaint(mat: THREE.MeshPhysicalMaterial, look: CarLook): void {
+export function applyPaint(mat: THREE.MeshStandardMaterial, look: CarLook): void {
   const f = FINISH[look.finish];
   mat.color.set(look.paint);
   mat.metalness = f.metalness;
   mat.roughness = f.roughness;
-  mat.clearcoat = f.clearcoat;
-  mat.clearcoatRoughness = 0.08;
-  mat.iridescence = look.finish === 'pearl' ? 0.6 : 0;
+  // Verniz e iridescência só existem no material físico (tier alto).
+  if (mat instanceof THREE.MeshPhysicalMaterial) {
+    mat.clearcoat = f.clearcoat;
+    mat.clearcoatRoughness = 0.08;
+    mat.iridescence = look.finish === 'pearl' ? 0.6 : 0;
+  } else if (look.finish === 'gloss' || look.finish === 'pearl') {
+    // Sem verniz: compensa com um pouco menos de rugosidade.
+    mat.roughness = Math.max(0.12, f.roughness * 0.8);
+  }
   mat.needsUpdate = true;
 }
 
@@ -76,8 +82,8 @@ export class CarView {
     radius: 0.17,
   };
 
-  private readonly paintMat = new THREE.MeshPhysicalMaterial();
-  private readonly glassMat = new THREE.MeshPhysicalMaterial({ color: 0x07090d, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.85 });
+  private readonly paintMat: THREE.MeshStandardMaterial;
+  private readonly glassMat: THREE.MeshStandardMaterial;
   private readonly trimMat = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.6, metalness: 0.2 });
   private readonly wheelMat = new THREE.MeshStandardMaterial({ color: 0x1b1b24, roughness: 0.55, metalness: 0.3, emissive: 0x0a0a10 });
   private readonly tireMat = new THREE.MeshStandardMaterial({ color: 0x08080a, roughness: 0.92, metalness: 0 });
@@ -95,10 +101,14 @@ export class CarView {
   private readonly tmpPos = new THREE.Vector3();
   private readonly tmpQuat = new THREE.Quaternion();
 
-  constructor(spec: CarSpec = HANABI_200S, look: CarLook = defaultLook()) {
+  constructor(spec: CarSpec = HANABI_200S, look: CarLook = defaultLook(), opts: { physical?: boolean; lod?: CarLod } = {}) {
     this.look = { ...look };
+    const physical = opts.physical ?? true;
+    const glassParams = { color: 0x07090d, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.85 };
+    this.paintMat = physical ? new THREE.MeshPhysicalMaterial() : new THREE.MeshStandardMaterial();
+    this.glassMat = physical ? new THREE.MeshPhysicalMaterial(glassParams) : new THREE.MeshStandardMaterial(glassParams);
     const d = dimsOf(spec);
-    this.geo = buildCarGeometries(d);
+    this.geo = buildCarGeometries(d, opts.lod ?? 'high');
     const g = this.geo;
     const add = (geom: THREE.BufferGeometry, mat: THREE.Material) => {
       const m = new THREE.Mesh(geom, mat);
