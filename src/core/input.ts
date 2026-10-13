@@ -35,12 +35,13 @@ export interface UiActions {
   toggleGarage: boolean;
   reset: boolean;
   toggleDebug: boolean;
+  toggleMute: boolean;
 }
 
 /** Teclado + gamepad do navegador (modo desktop). */
 export class DesktopInput {
   readonly drive: DriveInput = emptyInput();
-  readonly actions: UiActions = { toggleCamera: false, toggleGarage: false, reset: false, toggleDebug: false };
+  readonly actions: UiActions = { toggleCamera: false, toggleGarage: false, reset: false, toggleDebug: false, toggleMute: false };
 
   private keys = new Set<string>();
   private steerSmooth = 0;
@@ -75,6 +76,7 @@ export class DesktopInput {
       if (c === 'KeyC') this.actions.toggleCamera = true;
       if (c === 'KeyG') this.actions.toggleGarage = true;
       if (c === 'KeyR') this.actions.reset = true;
+      if (c === 'KeyM') this.actions.toggleMute = true;
       if (c === 'F3') {
         e.preventDefault();
         this.actions.toggleDebug = true;
@@ -151,7 +153,7 @@ export class DesktopInput {
   consumeActions(): UiActions {
     const a = this.actions;
     const out = { ...a };
-    a.toggleCamera = a.toggleGarage = a.reset = a.toggleDebug = false;
+    a.toggleCamera = a.toggleGarage = a.reset = a.toggleDebug = a.toggleMute = false;
     return out;
   }
 }

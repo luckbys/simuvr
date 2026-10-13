@@ -18,6 +18,8 @@ import { Hud } from './ui/hud';
 import { Cockpit } from './car/cockpit';
 import { VrMode } from './xr/vrMode';
 import { Garage } from './garage/garage';
+import { AudioSystem } from './audio/audioSystem';
+import { Fx } from './fx/fx';
 
 export class Game {
   readonly quality: QualitySettings;
@@ -37,6 +39,8 @@ export class Game {
   readonly cockpit: Cockpit;
   vr: VrMode | null = null;
   readonly garage = new Garage();
+  audio: AudioSystem | null = null;
+  readonly fx: Fx;
   private camBeforeGarage: import('./core/cameras').CamMode = 'chase';
 
   tuning: TuningState = defaultTuning();
@@ -104,6 +108,9 @@ export class Game {
     scene.add(this.carView.root);
     this.addHeadlights();
     this.cockpit = new Cockpit(this.carView, this.quality.rearMirror);
+    const rainParam = new URLSearchParams(location.search).get('rain');
+    const rainOn = rainParam === null ? this.quality.rain : rainParam === '1';
+    this.fx = new Fx(scene, this.carView, this.quality, HANABI_200S.comHeight, rainOn);
 
     // Garagem: aplica o visual/tuning salvos e reaplica a cada alteração; abrir a garagem segura o carro.
     this.applyGarage(this.garage.state);
@@ -198,6 +205,20 @@ export class Game {
     this.vehicle.postStep();
   }
 
+  /** Liga o áudio; precisa ser chamado de dentro de um gesto do usuário (clique em Jogar/VR). */
+  async enableAudio(): Promise<void> {
+    if (this.audio) return;
+    const st = this.city?.layout.stage;
+    const stagePos = st ? { x: (st.x0 + st.x1) / 2, y: 4, z: (st.z0 + st.z1) / 2 } : null;
+    try {
+      this.audio = new AudioSystem(stagePos);
+      await this.audio.start();
+    } catch (e) {
+      console.warn('Áudio indisponível:', e);
+      this.audio = null;
+    }
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -206,6 +227,28 @@ export class Game {
   }
 
   private readonly skyPos = new THREE.Vector3();
+
+  private readonly aPos = new THREE.Vector3();
+  private readonly aFwd = new THREE.Vector3();
+  private readonly aUp = new THREE.Vector3();
+
+  private updateAudio(dt: number, presenting: boolean): void {
+    if (!this.audio) return;
+    const cam = this.ctx.camera;
+    cam.updateMatrixWorld();
+    cam.getWorldPosition(this.aPos);
+    this.aFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
+    this.aUp.set(0, 1, 0).transformDirection(cam.matrixWorld);
+    const inside = presenting ? this.vr?.state === 'driving' : this.cameras.mode === 'cockpit' || this.cameras.mode === 'hood';
+    this.audio.update(dt, this.vehicle, {
+      listenerPos: this.aPos,
+      listenerFwd: this.aFwd,
+      listenerUp: this.aUp,
+      insideCar: !!inside,
+      rain: false,
+      windowTint: this.carView.look.windowTint,
+    });
+  }
 
   private frame(now: number): void {
     const dt = Math.min((now - this.last) / 1000, 0.1);
@@ -219,6 +262,7 @@ export class Game {
     if (a.toggleCamera && !presenting) this.cameras.cycle();
     if (a.reset) this.resetCar();
     if (a.toggleGarage && !presenting) this.garage.setOpen(!this.garage.open);
+    if (a.toggleMute) this.audio?.toggleMute();
 
     // Entrada: VR (controles) ou desktop (teclado/gamepad).
     if (presenting) {
@@ -254,6 +298,9 @@ export class Game {
 
     this.cockpit.update(dt, this.vehicle);
     if (presenting || this.cameras.mode === 'cockpit') this.cockpit.renderMirror(renderer, this.ctx.scene);
+
+    this.updateAudio(dt, presenting);
+    this.fx.update(dt, this.vehicle, this.ctx.camera.getWorldPosition(this.skyPos), this.audio?.consumeBackfires() ?? 0);
 
     this.ctx.camera.getWorldPosition(this.skyPos);
     this.city?.sky.position.copy(this.skyPos);

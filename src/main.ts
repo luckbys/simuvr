@@ -1,5 +1,6 @@
 import { Game } from './game';
 import { GarageUi } from './ui/garageUi';
+import { EngineSynth } from './audio/engineSynth';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -12,6 +13,8 @@ async function boot(): Promise<void> {
   const game = await Game.create($('app'));
   (window as unknown as { __game: Game }).__game = game;
   new GarageUi(game);
+  // Ganchos para os testes E2E (renderização offline do motor).
+  (window as unknown as { __lib: unknown }).__lib = { EngineSynth };
 
   const xrState = await game.xr.detect();
   vr.disabled = xrState !== 'available';
@@ -23,6 +26,8 @@ async function boot(): Promise<void> {
     start.style.display = 'none';
     $('hud').classList.add('on');
     game.start();
+    // O clique é o gesto que a política de autoplay exige para o áudio.
+    void game.enableAudio();
   };
 
   play.addEventListener('click', begin);
