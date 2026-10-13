@@ -6,7 +6,7 @@ física de veículo própria (pneu Pacejka, turbo, câmbio, diferencial). Feito 
 rodando no navegador do **Meta Quest 3/3S** e no PC.
 
 > **Estado:** todos os recursos abaixo estão implementados e cobertos por testes automatizados
-> (131 unitários + 6 suítes E2E, incluindo VR emulado). **Ainda não foi testado num Quest real**: desempenho,
+> (132 unitários + 6 suítes E2E, incluindo VR emulado). **Ainda não foi testado num Quest real**: desempenho,
 > conforto e a sensação do volante precisam ser validados no aparelho (veja [docs/QUEST.md](docs/QUEST.md)).
 
 ## Início rápido
@@ -84,7 +84,7 @@ desempenho** (`src/core/perfGovernor.ts`) desliga recursos por etapas se o heads
 
 ```bash
 npm run typecheck
-npm test                 # 131 testes unitários (física a 120/90/60 Hz, tuning, cidade, volante, garagem, áudio, desempenho)
+npm test                 # 132 testes unitários (física a 120/90/60 Hz, tuning, cidade, volante, garagem, áudio, desempenho)
 npm run test:e2e         # Chromium headless: PC, qualidade, garagem, áudio/efeitos, VR emulado e VR a pé
 ```
 

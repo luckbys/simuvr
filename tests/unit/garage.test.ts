@@ -125,6 +125,17 @@ describe('esquema dos controles', () => {
     }
   });
 
+  it('"Vidros" mostra a opção mais próxima mesmo quando o valor salvo não é exato', () => {
+    const garage = new Garage();
+    const tint = allControls().find((c) => c.kind === 'choice' && c.label === 'Vidros');
+    expect(tint?.kind).toBe('choice');
+    if (tint?.kind !== 'choice') return;
+    for (const [v, id] of [[0.85, '2'], [0.55, '1'], [0.4, '0'], [0.7, '1'], [0.92, '2'], [0.35, '0']] as const) {
+      garage.mutate((s) => { s.look.windowTint = v; });
+      expect(tint.get(garage.state)).toBe(id);
+    }
+  });
+
   it('as predefinições são válidas, diferentes e resolvem sem erro', () => {
     const seen = new Set<string>();
     for (const p of PRESETS) {

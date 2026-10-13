@@ -56,7 +56,8 @@ export const TABS: Tab[] = [
       {
         kind: 'choice', label: 'Vidros',
         options: [{ id: '0', label: 'Claro' }, { id: '1', label: 'Médio' }, { id: '2', label: 'Escuro' }],
-        get: (s) => String(Math.max(0, TINTS.findIndex((v) => Math.abs(v - s.look.windowTint) < 0.01))),
+        // Opção mais próxima do valor salvo (o valor pode vir de uma versão antiga ou de um preset).
+        get: (s) => String(TINTS.reduce((best, v, i) => (Math.abs(v - s.look.windowTint) < Math.abs(TINTS[best]! - s.look.windowTint) ? i : best), 0)),
         set: (s, id) => { s.look.windowTint = TINTS[Number(id)] ?? 0.7; },
       },
     ],

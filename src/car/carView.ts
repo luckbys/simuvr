@@ -18,7 +18,7 @@ export interface CarLook {
 }
 
 export function defaultLook(): CarLook {
-  return { paint: '#e0158a', finish: 'metallic', rimColor: '#c9ced6', underglow: '#27e8ff', spoiler: 'none', windowTint: 0.85 };
+  return { paint: '#e0158a', finish: 'metallic', rimColor: '#c9ced6', underglow: '#27e8ff', spoiler: 'none', windowTint: 0.7 };
 }
 
 export function dimsOf(spec: CarSpec): CarDims {
