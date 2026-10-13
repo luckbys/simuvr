@@ -2,6 +2,10 @@ import { mkdirSync } from 'node:fs';
 import { startServer, launch, collectErrors, assert, URL_BASE } from './harness.mjs';
 
 mkdirSync('test-results', { recursive: true });
+
+/** Espera `n` quadros do navegador (o SwiftShader pode levar centenas de ms por quadro). */
+const frames = (page, n = 2) =>
+  page.evaluate((k) => new Promise((resolve) => { let i = 0; const tick = () => (++i >= k ? resolve() : requestAnimationFrame(tick)); requestAnimationFrame(tick); }), n);
 const stop = await startServer();
 const browser = await launch();
 let failed = false;
@@ -50,19 +54,22 @@ try {
   await page.keyboard.up('Space');
   await page.keyboard.up('KeyA');
   await page.keyboard.up('KeyW');
+  await frames(page, 2);
 
   // 4) Trocar de câmera (C) e ver o cockpit.
-  await page.keyboard.press('KeyC'); // far
-  await page.waitForTimeout(500);
+  const waitMode = (m) => page.waitForFunction((x) => window.__game.cameras.mode === x, m, { timeout: 30000, polling: 100 });
+  await page.keyboard.press('KeyC');
+  await waitMode('far');
+  await frames(page, 3);
   await page.screenshot({ path: 'test-results/04-far.png' });
-  await page.keyboard.press('KeyC'); // hood
-  await page.waitForTimeout(400);
-  const modeHood = await page.evaluate(() => window.__game.cameras.mode);
-  assert(modeHood === 'hood', `C alterna a câmera (${modeHood})`);
-  await page.keyboard.press('KeyC'); // cockpit
-  await page.waitForTimeout(400);
-  const modeCockpit = await page.evaluate(() => window.__game.cameras.mode);
-  assert(modeCockpit === 'cockpit', `C chega ao cockpit (${modeCockpit})`);
+  await page.keyboard.press('KeyC');
+  await waitMode('hood');
+  assert(true, 'C alterna a câmera para o capô');
+  await frames(page, 2);
+  await page.keyboard.press('KeyC');
+  await waitMode('cockpit');
+  assert(true, 'C chega ao cockpit');
+  await frames(page, 3);
   await page.screenshot({ path: 'test-results/05-cockpit.png' });
 
   // 5) Close-ups da câmera orbital (a mesma que a garagem vai usar).
@@ -73,7 +80,7 @@ try {
       g.cameras.mode = 'orbit';
       g.cameras.orbit = { azimuth: a, elevation: e, distance: 6.5 };
     }, [az, el]);
-    await page.waitForTimeout(1200);
+    await frames(page, 4);
     await page.screenshot({ path: `test-results/${name}.png` });
   }
 

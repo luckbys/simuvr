@@ -161,14 +161,18 @@ export function buildCarGeometries(d: CarDims): CarGeometries {
     { z: -L2 + 0.35, hb: 0.18, ht: 0.64, hw: 0.8 },
     { z: d.frontAxleZ, hb: 0.18, ht: 0.68, hw: 0.8 },
     { z: -0.7, hb: 0.18, ht: 0.74, hw: 0.82 },
+    // Estação exata na borda do recorte do deck da cabine (começa em z = -0,6).
+    { z: -0.6, hb: 0.18, ht: 0.76, hw: 0.82 },
     { z: -0.15, hb: 0.18, ht: 0.84, hw: 0.84 },
     { z: 0.6, hb: 0.18, ht: 0.86, hw: 0.84 },
     { z: d.rearAxleZ - 0.2, hb: 0.18, ht: 0.9, hw: 0.82 },
+    // Fim do recorte do deck da cabine (z = 1,46): a tampa do porta-malas fica intacta daqui para trás.
+    { z: 1.46, hb: 0.18, ht: 0.915, hw: 0.81 },
     { z: d.rearAxleZ + 0.35, hb: 0.2, ht: 0.94, hw: 0.8 },
     { z: L2 - 0.08, hb: 0.24, ht: 0.92, hw: 0.72 },
     { z: L2, hb: 0.3, ht: 0.84, hw: 0.6 },
   ];
-  const body = openTop(orientOutward(loft(bodySt, h2y, 3.6)), -0.6, 1.46, h2y(0.66));
+  const body = openTop(orientOutward(loft(bodySt, h2y, 3.6)), -0.601, 1.461, h2y(0.66));
 
   // ----- Cabine (vidros) e teto -----
   const cabinSt: Station[] = [

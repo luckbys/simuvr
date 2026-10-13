@@ -32,12 +32,13 @@ export class PhysicsWorld {
     opts: { yaw?: number; pitch?: number; surface?: SurfaceId; friction?: number } = {},
   ): RAPIER.Collider {
     const { yaw = 0, pitch = 0, surface = 'asphalt', friction = 0.6 } = opts;
-    const body = this.world.createRigidBody(
-      this.R.RigidBodyDesc.fixed().setTranslation(center[0], center[1], center[2]).setRotation(eulerYX(yaw, pitch)),
-    );
+    // Colisor sem corpo: fica no mundo estático (barato para centenas de prédios e postes).
     const col = this.world.createCollider(
-      this.R.ColliderDesc.cuboid(half[0], half[1], half[2]).setFriction(friction).setRestitution(0.1),
-      body,
+      this.R.ColliderDesc.cuboid(half[0], half[1], half[2])
+        .setTranslation(center[0], center[1], center[2])
+        .setRotation(eulerYX(yaw, pitch))
+        .setFriction(friction)
+        .setRestitution(0.1),
     );
     this.surfaces.set(col.handle, surface);
     return col;

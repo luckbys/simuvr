@@ -12,7 +12,8 @@ import { HANABI_200S } from './physics/carSpec';
 import { defaultTuning, resolveVehicleParams, type TuningState } from './physics/tuning';
 import { CarView, defaultLook } from './car/carView';
 import { makeNightEnvironment } from './city/envMap';
-import { buildTestArena, type Arena } from './city/testArena';
+import { buildTestArena } from './city/testArena';
+import { buildCity, type City } from './city/city';
 import { Hud } from './ui/hud';
 
 export class Game {
@@ -25,12 +26,15 @@ export class Game {
   readonly physics: PhysicsWorld;
   readonly vehicle: Vehicle;
   readonly carView: CarView;
-  readonly arena: Arena;
+  /** Mundo atual: a cidade (padrão) ou a arena de teste (?arena=1). */
+  readonly world: { group: THREE.Group; sync(): void; spawn: { x: number; z: number; yaw: number } };
+  readonly city: City | null;
   readonly cameras: CameraRig;
   readonly hud = new Hud();
 
   tuning: TuningState = defaultTuning();
 
+  private env: THREE.Texture | null = null;
   private last = performance.now();
   private running = false;
   private readonly drive: DriveInput = emptyInput();
@@ -52,6 +56,7 @@ export class Game {
     scene.background = new THREE.Color(0x07060f);
     scene.fog = new THREE.FogExp2(0x120a26, 0.006);
     const env = makeNightEnvironment(this.ctx.renderer, this.quality.envMapSize);
+    this.env = env;
     scene.environment = env;
     scene.environmentIntensity = 0.55;
 
@@ -59,20 +64,38 @@ export class Game {
     const moon = new THREE.DirectionalLight(0x9fb4ff, 0.45);
     moon.position.set(-30, 60, 20);
     scene.add(moon);
-    const p1 = new THREE.PointLight(0xff2fb3, 60, 40, 1.6);
-    p1.position.set(-8, 5, -6);
-    const p2 = new THREE.PointLight(0x27e8ff, 60, 40, 1.6);
-    p2.position.set(8, 5, -14);
-    scene.add(p1, p2);
 
-    this.arena = buildTestArena(physics, env);
-    scene.add(this.arena.group);
+    const useArena = new URLSearchParams(location.search).get('arena') === '1';
+    if (useArena) {
+      const arena = buildTestArena(physics, env);
+      this.world = arena;
+      this.city = null;
+      scene.add(arena.group);
+    } else {
+      const city = buildCity(physics, this.quality, env);
+      this.city = city;
+      this.world = city;
+      scene.add(city.group);
+      scene.add(city.sky);
+      scene.fog = new THREE.FogExp2(0x1a0d30, 0.0042);
+      // Reflexos reais: captura a cidade uma vez e usa como ambiente de tudo.
+      const real = city.captureEnvironment(this.ctx.renderer, scene, this.quality.envMapSize);
+      scene.environment = real;
+      scene.environmentIntensity = 0.7;
+      env.dispose();
+      this.env = real;
+      scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+        if (m && 'envMap' in m && m.envMap) m.envMap = real;
+      });
+    }
 
     const params = resolveVehicleParams(HANABI_200S, this.tuning);
-    this.vehicle = new Vehicle(physics, params, this.arena.spawn, { abs: true, steerAssist: 0.45, autoGear: true });
+    this.vehicle = new Vehicle(physics, params, this.world.spawn, { abs: true, steerAssist: 0.45, autoGear: true });
     this.carView = new CarView(HANABI_200S, defaultLook());
-    this.carView.setEnvironment(env);
+    this.carView.setEnvironment(this.env);
     scene.add(this.carView.root);
+    this.addHeadlights();
   }
 
   static async create(host: HTMLElement): Promise<Game> {
@@ -88,9 +111,21 @@ export class Game {
   }
 
   resetCar(): void {
-    const s = this.arena.spawn;
+    const s = this.world.spawn;
     this.vehicle.reset(s.x, s.z, s.yaw);
     this.cameras.snap();
+  }
+
+  /** Faróis: dois SpotLights presos ao carro (sem sombra). */
+  private addHeadlights(): void {
+    for (const sx of [-0.52, 0.52]) {
+      const spot = new THREE.SpotLight(0xfff0d6, 420, 70, 0.5, 0.55, 1.6);
+      spot.position.set(sx, 0.25, -2.0);
+      const target = new THREE.Object3D();
+      target.position.set(sx * 0.6, -0.1, -22);
+      this.carView.root.add(spot, target);
+      spot.target = target;
+    }
   }
 
   private fixedUpdate(dt: number): void {
@@ -125,7 +160,8 @@ export class Game {
     this.shiftDownPending ||= src.shiftDown;
 
     const alpha = this.stepper.advance(dt);
-    this.arena.sync();
+    this.world.sync();
+    this.city?.sky.position.copy(this.ctx.camera.position);
     this.carView.update(this.vehicle, alpha);
 
     this.carPos.copy(this.carView.root.position);

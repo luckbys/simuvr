@@ -11,7 +11,7 @@ export function wetAsphaltTextures(repeat: number): { map: THREE.CanvasTexture; 
   const r = rough.getContext('2d')!;
   c.fillStyle = '#16161c';
   c.fillRect(0, 0, S, S);
-  r.fillStyle = '#8c8c8c';
+  r.fillStyle = '#707070';
   r.fillRect(0, 0, S, S);
   let seed = 12345;
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -24,9 +24,9 @@ export function wetAsphaltTextures(repeat: number): { map: THREE.CanvasTexture; 
   for (let i = 0; i < 5; i++) {
     const x = rnd() * S, y = rnd() * S, rad = 40 + rnd() * 90;
     const g = r.createRadialGradient(x, y, 0, x, y, rad);
-    g.addColorStop(0, 'rgb(58,58,58)');
-    g.addColorStop(0.7, 'rgb(96,96,96)');
-    g.addColorStop(1, 'rgba(140,140,140,0)');
+    g.addColorStop(0, 'rgb(30,30,30)');
+    g.addColorStop(0.7, 'rgb(70,70,70)');
+    g.addColorStop(1, 'rgba(112,112,112,0)');
     r.fillStyle = g;
     r.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
@@ -39,6 +39,39 @@ export function wetAsphaltTextures(repeat: number): { map: THREE.CanvasTexture; 
     return t;
   };
   return { map: mk(color, true), roughnessMap: mk(rough, false) };
+}
+
+/** Cones laranja dinâmicos (corpo = caixa pequena) com um InstancedMesh sincronizado à física. */
+export function buildCones(pw: PhysicsWorld, spots: ReadonlyArray<readonly [number, number]>): { mesh: THREE.InstancedMesh; sync: () => void } {
+  const coneGeo = new THREE.ConeGeometry(0.17, 0.5, 14);
+  coneGeo.translate(0, 0.25, 0);
+  const mesh = new THREE.InstancedMesh(
+    coneGeo,
+    new THREE.MeshStandardMaterial({ color: 0xff6a1a, roughness: 0.5, emissive: 0x401400 }),
+    Math.max(1, spots.length),
+  );
+  const bodies = spots.map(([x, z]) => pw.addDynamicBox([x, 0.25, z], [0.17, 0.25, 0.17], 1.5));
+  mesh.count = bodies.length;
+  mesh.frustumCulled = false;
+  const m4 = new THREE.Matrix4();
+  const p = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1);
+  const sync = () => {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      const t = b.translation();
+      const r = b.rotation();
+      // O corpo é uma caixa centrada em y=0.25; o cone tem a base na origem.
+      p.set(t.x, t.y - 0.25, t.z);
+      q.set(r.x, r.y, r.z, r.w);
+      m4.compose(p, q, one);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  sync();
+  return { mesh, sync };
 }
 
 export interface Arena {
@@ -96,39 +129,11 @@ export function buildTestArena(pw: PhysicsWorld, env: THREE.Texture | null): Are
   group.add(ramp);
 
   // Cones dinâmicos: slalom e uma pirâmide.
-  const coneGeo = new THREE.ConeGeometry(0.17, 0.5, 14);
-  coneGeo.translate(0, 0.25, 0);
-  const cones: { body: ReturnType<PhysicsWorld['addDynamicBox']> }[] = [];
   const spots: [number, number][] = [];
   for (let i = 0; i < 10; i++) spots.push([(i % 2 ? 3.5 : -3.5) + 22, -20 - i * 12]);
   for (let row = 0; row < 4; row++) for (let k = 0; k <= row; k++) spots.push([-30 + (k - row / 2) * 0.6, -40 - row * 0.5]);
-  const instanced = new THREE.InstancedMesh(
-    coneGeo,
-    new THREE.MeshStandardMaterial({ color: 0xff6a1a, roughness: 0.5, emissive: 0x401400 }),
-    spots.length,
-  );
-  for (const [x, z] of spots) cones.push({ body: pw.addDynamicBox([x, 0.25, z], [0.17, 0.25, 0.17], 1.5) });
-  instanced.frustumCulled = false;
-  group.add(instanced);
-
-  const m4 = new THREE.Matrix4();
-  const p = new THREE.Vector3();
-  const q = new THREE.Quaternion();
-  const one = new THREE.Vector3(1, 1, 1);
-  const sync = () => {
-    for (let i = 0; i < cones.length; i++) {
-      const b = cones[i]!.body;
-      const t = b.translation();
-      const r = b.rotation();
-      // O corpo é uma caixa centrada em y=0.25; o cone tem a base na origem.
-      p.set(t.x, t.y - 0.25, t.z);
-      q.set(r.x, r.y, r.z, r.w);
-      m4.compose(p, q, one);
-      instanced.setMatrixAt(i, m4);
-    }
-    instanced.instanceMatrix.needsUpdate = true;
-  };
-  sync();
+  const { mesh: conesMesh, sync } = buildCones(pw, spots);
+  group.add(conesMesh);
 
   return { group, sync, spawn: { x: 0, z: 0, yaw: 0 } };
 }
