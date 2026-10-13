@@ -38,7 +38,8 @@ export class VrPanel {
   private readonly canvas = document.createElement('canvas');
   private readonly ctx = this.canvas.getContext('2d')!;
   private readonly tex: THREE.CanvasTexture;
-  private rows: PanelRow[] = [];
+  /** Linhas atuais (somente leitura; exposto para testes). */
+  rows: PanelRow[] = [];
   private regions: Region[] = [];
   private hover: Region | null = null;
   private pressed: Region | null = null;
@@ -73,6 +74,7 @@ export class VrPanel {
     switch (r.type) {
       case 'title': return TITLE_H;
       case 'spacer': return r.h;
+      case 'label': return 44;
       case 'slider': return ROW_H + 18;
       default: return ROW_H;
     }

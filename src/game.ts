@@ -17,6 +17,7 @@ import { buildCity, type City } from './city/city';
 import { Hud } from './ui/hud';
 import { Cockpit } from './car/cockpit';
 import { VrMode } from './xr/vrMode';
+import { Garage } from './garage/garage';
 
 export class Game {
   readonly quality: QualitySettings;
@@ -35,6 +36,8 @@ export class Game {
   readonly hud = new Hud();
   readonly cockpit: Cockpit;
   vr: VrMode | null = null;
+  readonly garage = new Garage();
+  private camBeforeGarage: import('./core/cameras').CamMode = 'chase';
 
   tuning: TuningState = defaultTuning();
 
@@ -102,6 +105,21 @@ export class Game {
     this.addHeadlights();
     this.cockpit = new Cockpit(this.carView, this.quality.rearMirror);
 
+    // Garagem: aplica o visual/tuning salvos e reaplica a cada alteração; abrir a garagem segura o carro.
+    this.applyGarage(this.garage.state);
+    this.garage.onChange((st) => this.applyGarage(st));
+    window.addEventListener('resize', () => this.applyViewOffset());
+    this.garage.onOpenChange((open) => {
+      this.applyViewOffset();
+      if (open) {
+        this.camBeforeGarage = this.cameras.mode === 'orbit' ? 'chase' : this.cameras.mode;
+        if (!this.ctx.renderer.xr.isPresenting) this.cameras.mode = 'orbit';
+      } else {
+        this.cameras.mode = this.camBeforeGarage;
+        this.cameras.snap();
+      }
+    });
+
     // Sessão VR: cria o modo VR sob demanda e devolve a câmera ao desktop ao sair.
     this.xr.onStart = () => {
       this.vr ??= new VrMode({
@@ -113,6 +131,7 @@ export class Game {
         quality: this.quality,
         layout: this.city?.layout ?? null,
         setAutoGear: (a) => { this.vehicle.options.autoGear = a; },
+        garage: this.garage,
         debugText: () => this.debug.summary,
         exitVr: () => this.xr.exit(),
       });
@@ -131,6 +150,24 @@ export class Game {
     this.tuning = t;
     this.vehicle.setParams(resolveVehicleParams(HANABI_200S, t));
     this.carView.setLook({ spoiler: t.spoiler });
+  }
+
+  /** Aplica o estado completo da garagem (tuning + visual). */
+  applyGarage(st: { tuning: TuningState; look: import('./car/carView').CarLook }): void {
+    this.applyTuning(st.tuning);
+    this.carView.setLook(st.look);
+  }
+
+  /** Com a garagem aberta no PC, desloca o enquadramento para centralizar o carro na área livre (à direita do painel). */
+  private applyViewOffset(): void {
+    const cam = this.ctx.camera;
+    const w = this.ctx.renderer.domElement.clientWidth || window.innerWidth;
+    const h = this.ctx.renderer.domElement.clientHeight || window.innerHeight;
+    if (this.garage.open && !this.ctx.renderer.xr.isPresenting && w > 700) {
+      cam.setViewOffset(w, h, -190, 0, w, h);
+    } else {
+      cam.clearViewOffset();
+    }
   }
 
   resetCar(): void {
@@ -181,6 +218,7 @@ export class Game {
     if (a.toggleDebug) this.debug.toggle();
     if (a.toggleCamera && !presenting) this.cameras.cycle();
     if (a.reset) this.resetCar();
+    if (a.toggleGarage && !presenting) this.garage.setOpen(!this.garage.open);
 
     // Entrada: VR (controles) ou desktop (teclado/gamepad).
     if (presenting) {
@@ -190,6 +228,8 @@ export class Game {
     } else {
       const src = this.input.poll(dt);
       Object.assign(this.drive, src);
+      // Com a garagem aberta o carro fica parado: nada de acelerar/esterçar por tecla.
+      if (this.garage.open) Object.assign(this.drive, { throttle: 0, brake: 0, steer: 0, handbrake: 1, shiftUp: false, shiftDown: false });
       this.shiftUpPending ||= src.shiftUp;
       this.shiftDownPending ||= src.shiftDown;
     }

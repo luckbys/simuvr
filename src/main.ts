@@ -1,4 +1,5 @@
 import { Game } from './game';
+import { GarageUi } from './ui/garageUi';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -10,6 +11,7 @@ async function boot(): Promise<void> {
 
   const game = await Game.create($('app'));
   (window as unknown as { __game: Game }).__game = game;
+  new GarageUi(game);
 
   const xrState = await game.xr.detect();
   vr.disabled = xrState !== 'available';

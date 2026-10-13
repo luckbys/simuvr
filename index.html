@@ -53,6 +53,39 @@
       #gauge .boost { font-size: .8rem; color: var(--dim); margin-top: 4px; }
       #help { font-size: .75rem; color: var(--dim); background: var(--panel); padding: 8px 12px; border-radius: 8px; line-height: 1.5; }
 
+
+      #garage { position: fixed; top: 0; left: 0; bottom: 0; width: min(380px, 100vw); z-index: 8; display: none; flex-direction: column;
+        background: linear-gradient(180deg, rgba(12,9,28,.94), rgba(8,6,20,.94)); border-right: 1px solid rgba(255,47,179,.5);
+        box-shadow: 0 0 40px rgba(255,47,179,.18); backdrop-filter: blur(6px); }
+      #garage.open { display: flex; }
+      #garage header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px; }
+      #garage h2 { margin: 0; font-size: 1.1rem; letter-spacing: .14em; text-shadow: 0 0 12px var(--neon-a); }
+      #garage #g-close { appearance: none; border: 0; background: none; color: var(--dim); font-size: 1.5rem; cursor: pointer; }
+      #garage .presets { display: flex; gap: 6px; padding: 4px 16px 8px; flex-wrap: wrap; }
+      #garage .chip { appearance: none; border: 1px solid var(--neon-a); background: rgba(255,47,179,.1); color: var(--ink); padding: 6px 12px;
+        border-radius: 999px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+      #garage .chip:hover { background: rgba(255,47,179,.3); }
+      #garage .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      #garage .tab { appearance: none; border: 0; background: rgba(255,255,255,.05); color: var(--dim); padding: 7px 10px; border-radius: 8px;
+        font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; }
+      #garage .tab.on { background: rgba(39,232,255,.18); color: var(--ink); box-shadow: inset 0 -2px 0 var(--neon-b); }
+      #garage .controls { flex: 1; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 14px; }
+      #garage .ctl .row { display: flex; justify-content: space-between; font-size: .82rem; color: #cfd2f5; margin-bottom: 6px; }
+      #garage .ctl .row b { color: var(--neon-b); font-variant-numeric: tabular-nums; }
+      #garage input[type=range] { width: 100%; accent-color: var(--neon-a); }
+      #garage .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+      #garage .seg button { appearance: none; flex: 1 1 auto; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.05);
+        color: var(--ink); padding: 8px 10px; border-radius: 9px; font: inherit; font-size: .8rem; cursor: pointer; }
+      #garage .seg button.on { border-color: var(--neon-b); background: rgba(39,232,255,.22); font-weight: 700; }
+      #garage .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+      #garage .sw { width: 30px; height: 30px; border-radius: 8px; border: 2px solid rgba(255,255,255,.3); cursor: pointer; padding: 0; color: #fff; font-size: .8rem; background: #222; }
+      #garage .sw.on { border-color: #fff; box-shadow: 0 0 10px rgba(255,255,255,.6); transform: scale(1.1); }
+      #garage .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 16px; border-top: 1px solid rgba(255,255,255,.08); }
+      #garage .stats div { display: flex; flex-direction: column; font-size: .68rem; color: var(--dim); }
+      #garage .stats b { color: var(--ink); font-size: .95rem; font-variant-numeric: tabular-nums; }
+      #garage footer { padding: 8px 16px 12px; font-size: .7rem; color: var(--dim); }
+      body.garage-open #hud { display: none !important; }
+
       #debug { position: fixed; top: 8px; left: 8px; z-index: 6; font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
         color: #9dfcb0; background: rgba(0,0,0,.55); padding: 6px 8px; border-radius: 6px; white-space: pre; display: none; pointer-events: none; }
       #debug.on { display: block; }
@@ -61,6 +94,15 @@
   <body>
     <div id="app"></div>
     <div id="debug"></div>
+    <aside id="garage">
+      <header><h2>GARAGEM</h2><button id="g-close" title="Fechar (G)">×</button></header>
+      <div class="presets"></div>
+      <nav class="tabs"></nav>
+      <section class="controls"></section>
+      <section class="stats"></section>
+      <footer>Arraste para girar o carro · roda do mouse: zoom · <b>G</b> ou <b>Esc</b> fecha</footer>
+    </aside>
+
 
     <div id="hud">
       <div id="help">

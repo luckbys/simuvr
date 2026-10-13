@@ -7,6 +7,7 @@ import type { CityLayout } from '../city/layout';
 import { VrPanel, type PanelRow } from './panel';
 import { WheelGrabModel, wheelReturnRate, type HandSample } from './wheelGrab';
 import { pulse } from './haptics';
+import type { Garage } from '../garage/garage';
 
 export interface VrHost {
   renderer: THREE.WebGLRenderer;
@@ -17,8 +18,7 @@ export interface VrHost {
   quality: QualitySettings;
   layout: CityLayout | null;
   setAutoGear(auto: boolean): void;
-  /** Abre a garagem de tuning (marco 6). */
-  openGarage?: () => void;
+  garage: Garage;
   debugText(): string;
   exitVr(): void;
 }
@@ -79,6 +79,8 @@ export class VrMode {
   readonly menu = new VrPanel(0.78);
   menuOpen = false;
   readonly hint = new VrPanel(0.5);
+  readonly garagePanel = new VrPanel(1.05);
+  garagePanelOpen = false;
 
   private readonly hands: [Hand, Hand];
   /** Transformação do dolly no referencial do carro (definida ao recentrar). */
@@ -181,7 +183,12 @@ export class VrMode {
     this.menu.mesh.visible = false;
     this.hint.mesh.visible = false;
     this.hint.setRows([{ type: 'label', text: 'A · entrar no carro', color: '#27e8ff' }]);
-    scene.add(this.menu.mesh, this.hint.mesh);
+    scene.add(this.menu.mesh, this.hint.mesh, this.garagePanel.mesh);
+    this.garagePanel.mesh.visible = false;
+
+    // Garagem em VR: o painel acompanha a abertura/fechamento do estado compartilhado e as trocas de aba.
+    host.garage.rebuildVr = () => this.garagePanel.setRows(host.garage.vrRows(() => host.garage.setOpen(false)));
+    host.garage.onOpenChange((open) => (open ? this.openGaragePanel() : this.closeGaragePanel()));
   }
 
   // ---------------------------------------------------------------------------
@@ -206,6 +213,8 @@ export class VrMode {
     this.vignette.visible = false;
     this.menu.mesh.visible = false;
     this.menuOpen = false;
+    this.garagePanel.mesh.visible = false;
+    this.garagePanelOpen = false;
     this.host.vehicle.options.steerAssist = 0.45;
   }
 
@@ -322,6 +331,12 @@ export class VrMode {
     drive.shiftUp = !!R?.edge.a;
     drive.shiftDown = !!R?.edge.b;
     drive.steerIsAbsolute = true;
+    if (this.host.garage.open) {
+      // Com a garagem aberta o carro fica parado.
+      drive.throttle = 0;
+      drive.brake = 0;
+      drive.handbrake = 1;
+    }
     if (this.settings.steerMode === 'wheel') {
       drive.steer = this.wheel.steer;
     } else {
@@ -575,6 +590,7 @@ export class VrMode {
     this.dolly.updateMatrixWorld(true);
     this.updateVignette(dt);
     this.menu.update();
+    this.garagePanel.update();
     this.updatePointer();
   }
 
@@ -595,6 +611,10 @@ export class VrMode {
   // ---------------------------------------------------------------------------
 
   toggleMenu(): void {
+    if (this.garagePanelOpen) {
+      this.host.garage.setOpen(false);
+      return;
+    }
     this.menuOpen = !this.menuOpen;
     this.menu.mesh.visible = this.menuOpen;
     if (this.menuOpen) this.placeMenu();
@@ -602,26 +622,57 @@ export class VrMode {
   }
 
   private placeMenu(): void {
+    this.placePanel(this.menu, 0.95);
+  }
+
+  /** Coloca um painel à frente da cabeça. Dirigindo, fica preso ao carro; a pé, no mundo. */
+  private placePanel(panel: VrPanel, dist: number): void {
     const cam = this.host.camera;
     const head = cam.getWorldPosition(new THREE.Vector3());
     const fwd = this.tB.set(0, 0, -1).transformDirection(cam.matrixWorld);
     fwd.y = 0;
     if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
     fwd.normalize();
-    const world = head.clone().addScaledVector(fwd, 0.95);
+    const world = head.clone().addScaledVector(fwd, dist);
     world.y = head.y - 0.08;
-    // Dirigindo, o menu fica preso ao carro (senão o carro se afastaria dele); a pé, fica no mundo.
     const parent: THREE.Object3D = this.state === 'driving' ? this.host.carView.root : this.host.scene;
-    if (this.menu.mesh.parent !== parent) parent.add(this.menu.mesh);
+    if (panel.mesh.parent !== parent) parent.add(panel.mesh);
     parent.updateWorldMatrix(true, false);
-    this.menu.mesh.position.copy(world);
-    parent.worldToLocal(this.menu.mesh.position);
+    panel.mesh.position.copy(world);
+    parent.worldToLocal(panel.mesh.position);
     // lookAt aponta o +Z do painel (a face desenhada) para a cabeça.
-    this.menu.mesh.lookAt(head.x, world.y, head.z);
+    panel.mesh.lookAt(head.x, world.y, head.z);
+  }
+
+  private openGaragePanel(): void {
+    this.closeMenu();
+    this.garagePanelOpen = true;
+    this.host.garage.rebuildVr?.();
+    this.placePanel(this.garagePanel, 1.15);
+    this.garagePanel.mesh.visible = true;
+    for (const h of this.hands) h.laser.visible = true;
+  }
+
+  private closeGaragePanel(): void {
+    this.garagePanelOpen = false;
+    this.garagePanel.mesh.visible = false;
+    this.garagePanel.release();
+    for (const h of this.hands) h.laser.visible = this.menuOpen;
+  }
+
+  /** Painel que recebe o raio agora (garagem tem prioridade sobre o menu). */
+  private activePanel(): VrPanel | null {
+    if (this.garagePanelOpen) return this.garagePanel;
+    if (this.menuOpen) return this.menu;
+    return null;
   }
 
   private closeMenu(): void {
-    if (this.menuOpen) this.toggleMenu();
+    if (this.menuOpen) {
+      this.menuOpen = false;
+      this.menu.mesh.visible = false;
+      for (const h of this.hands) h.laser.visible = this.garagePanelOpen;
+    }
   }
 
   private buildMenu(): void {
@@ -672,42 +723,42 @@ export class VrMode {
         },
       },
     ];
-    if (this.host.openGarage) {
-      rows.push({ type: 'button', text: 'Garagem de tuning', accent: '#ff2fb3', onClick: () => { this.host.openGarage?.(); this.toggleMenu(); } });
-    }
+    rows.push({ type: 'button', text: 'Garagem de tuning', accent: '#ff2fb3', onClick: () => { this.closeMenu(); this.host.garage.setOpen(true); } });
     rows.push({ type: 'button', text: 'Sair do VR', accent: '#ff3b30', onClick: () => this.host.exitVr() });
     this.menu.setRows(rows);
   }
 
   private pollPointer(): void {
-    // O trigger precisa ser lido no mesmo quadro: aplica clique/arraste/solta no painel.
+    // O trigger precisa ser lido no mesmo quadro: aplica clique/arraste/solta no painel ativo.
     for (const h of this.hands) h.overPanel = false;
-    if (!this.menuOpen) return;
+    const panel = this.activePanel();
+    if (!panel) return;
     for (const h of this.hands) {
       if (!h.src) continue;
-      const hit = this.rayHit(h, this.menu);
+      const hit = this.rayHit(h, panel);
       if (hit) {
         h.overPanel = true;
-        this.menu.setHover(hit.px, hit.py);
+        panel.setHover(hit.px, hit.py);
         if (h.edge.trigger) {
-          if (this.menu.press(hit.px, hit.py)) pulse(h.src.gamepad, 0.35, 25);
+          if (panel.press(hit.px, hit.py)) pulse(h.src.gamepad, 0.35, 25);
         } else if (h.down.trigger) {
-          this.menu.drag(hit.px);
+          panel.drag(hit.px);
         }
       }
-      if (h.edge.triggerUp) this.menu.release();
+      if (h.edge.triggerUp) panel.release();
     }
-    if (!this.hands.some((h) => h.overPanel)) this.menu.setHover(null);
+    if (!this.hands.some((h) => h.overPanel)) panel.setHover(null);
   }
 
   /** Atualiza o comprimento dos lasers (após o posicionamento do rig). */
   private updatePointer(): void {
+    const panel = this.activePanel();
     for (const h of this.hands) {
-      if (!this.menuOpen || !h.src) {
+      if (!panel || !h.src) {
         h.laser.visible = false;
         continue;
       }
-      const hit = this.rayHit(h, this.menu);
+      const hit = this.rayHit(h, panel);
       const len = hit ? hit.dist : 1.4;
       h.laser.visible = true;
       h.laser.scale.set(1, len, 1);

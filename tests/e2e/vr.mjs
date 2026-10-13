@@ -104,47 +104,84 @@ try {
   await page.waitForFunction(() => window.__game.vr.menuOpen, null, { timeout: 20000, polling: 100 });
   assert(true, 'Y (toque) abre o menu');
 
-  const clicked = await page.evaluate(async () => {
-    const g = window.__game, vr = g.vr, dev = window.__xr;
-    const V = g.carView.root.position.constructor;
-    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const row = vr.menu.findRow('segments', 'Manual');
-    const target = new V();
-    vr.menu.mesh.updateMatrixWorld(true);
-    if (!vr.menu.worldPointOfItem(row, 1, target)) return { ok: false, why: 'sem item' };
-    // origem a 0,5 m na frente do painel (normal local +Z); o raio aponta para o item
-    const normal = new V(0, 0, 1).transformDirection(vr.menu.mesh.matrixWorld);
-    const origin = target.clone().addScaledVector(normal, 0.5);
-    const dir = target.clone().sub(origin).normalize();
-    // quaternion que leva -Z para `dir`
-    const from = new V(0, 0, -1);
-    const axis = from.clone().cross(dir);
-    const angle = Math.acos(Math.max(-1, Math.min(1, from.dot(dir))));
-    const q = { x: 0, y: 0, z: 0, w: 1 };
-    if (axis.length() > 1e-6) {
-      axis.normalize();
-      const s = Math.sin(angle / 2);
-      q.x = axis.x * s; q.y = axis.y * s; q.z = axis.z * s; q.w = Math.cos(angle / 2);
-    }
-    // converte mundo → espaço de referência: inverso do dolly
-    const dolly = vr.dolly;
-    dolly.updateMatrixWorld(true);
-    const inv = dolly.matrixWorld.clone().invert();
-    const pRef = origin.clone().applyMatrix4(inv);
-    dev.controllers.right.position.set(pRef.x, pRef.y, pRef.z);
-    const dq = dolly.getWorldQuaternion(dolly.quaternion.clone()).invert();
-    const qRef = new dolly.quaternion.constructor(q.x, q.y, q.z, q.w).premultiply(dq);
-    dev.controllers.right.quaternion.set(qRef.x, qRef.y, qRef.z, qRef.w);
-    for (let i = 0; i < 4; i++) await frame();
-    dev.controllers.right.updateButtonValue('trigger', 1);
-    for (let i = 0; i < 4; i++) await frame();
-    dev.controllers.right.updateButtonValue('trigger', 0);
-    for (let i = 0; i < 3; i++) await frame();
-    return { ok: true, auto: g.vehicle.options.autoGear };
+  // Auxiliar: aponta o raio do controle direito para um item de painel e aperta o gatilho.
+  await page.evaluate(() => {
+    window.__aimClick = async (panelKey, row, item) => {
+      const g = window.__game, vr = g.vr, dev = window.__xr;
+      const panel = vr[panelKey];
+      const V = g.carView.root.position.constructor;
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const target = new V();
+      panel.mesh.updateMatrixWorld(true);
+      if (!panel.worldPointOfItem(row, item, target)) return { ok: false, why: `sem item ${row}/${item}` };
+      // origem a 0,5 m na frente do painel (normal local +Z); o raio aponta para o item
+      const normal = new V(0, 0, 1).transformDirection(panel.mesh.matrixWorld);
+      const origin = target.clone().addScaledVector(normal, 0.5);
+      const dir = target.clone().sub(origin).normalize();
+      const from = new V(0, 0, -1);
+      const axis = from.clone().cross(dir);
+      const angle = Math.acos(Math.max(-1, Math.min(1, from.dot(dir))));
+      const q = { x: 0, y: 0, z: 0, w: 1 };
+      if (axis.length() > 1e-6) {
+        axis.normalize();
+        const s2 = Math.sin(angle / 2);
+        q.x = axis.x * s2; q.y = axis.y * s2; q.z = axis.z * s2; q.w = Math.cos(angle / 2);
+      }
+      const dolly = vr.dolly;
+      dolly.updateMatrixWorld(true);
+      const pRef = origin.clone().applyMatrix4(dolly.matrixWorld.clone().invert());
+      dev.controllers.right.position.set(pRef.x, pRef.y, pRef.z);
+      const dq = dolly.getWorldQuaternion(dolly.quaternion.clone()).invert();
+      const qRef = new dolly.quaternion.constructor(q.x, q.y, q.z, q.w).premultiply(dq);
+      dev.controllers.right.quaternion.set(qRef.x, qRef.y, qRef.z, qRef.w);
+      for (let i = 0; i < 3; i++) await frame();
+      dev.controllers.right.updateButtonValue('trigger', 1);
+      for (let i = 0; i < 3; i++) await frame();
+      dev.controllers.right.updateButtonValue('trigger', 0);
+      for (let i = 0; i < 3; i++) await frame();
+      return { ok: true };
+    };
   });
+  const aim = (panel, row, item) => page.evaluate(([p, r, i]) => window.__aimClick(p, r, i), [panel, row, item]);
+  const rowOf = (panel, type, text) => page.evaluate(([p, t, x]) => window.__game.vr[p].findRow(t, x), [panel, type, text]);
+
+  const manualRow = await rowOf('menu', 'segments', 'Manual');
+  const clicked = await aim('menu', manualRow, 1);
   assert(clicked.ok, 'raio do controle acerta o botão do menu');
-  assert(clicked.auto === false, 'clique no menu troca o câmbio para manual');
+  assert(await page.evaluate(() => window.__game.vehicle.options.autoGear === false), 'clique no menu troca o câmbio para manual');
   await page.screenshot({ path: 'test-results/vr-02-menu.png' });
+
+  // ---- Garagem em VR: abre pelo menu, aplica a predefinição Drift e altera um slider ----
+  const garageRow = await rowOf('menu', 'button', 'Garagem de tuning');
+  const g1 = await aim('menu', garageRow, 0);
+  assert(g1.ok, 'raio acerta "Garagem de tuning"');
+  await page.waitForFunction(() => window.__game.garage.open && window.__game.vr.garagePanelOpen && window.__game.vr.garagePanel.mesh.visible, null, { timeout: 30000, polling: 100 });
+  assert(true, 'garagem abre em VR (painel visível)');
+  assert(await page.evaluate(() => !window.__game.vr.menuOpen), 'o menu fecha ao abrir a garagem');
+
+  const driftRow = await rowOf('garagePanel', 'segments', 'Drift');
+  const dr = await aim('garagePanel', driftRow, 1);
+  assert(dr.ok, 'raio acerta a predefinição Drift');
+  await page.waitForFunction(() => window.__game.vehicle.params.diffType === 'locked', null, { timeout: 30000, polling: 100 });
+  assert(true, 'predefinição Drift em VR trava o diferencial');
+  assert(await page.evaluate(() => window.__game.carView.look.paint === '#7a5cff'), 'visual da predefinição aplicado em VR');
+
+  // Aba Motor e turbo de competição.
+  const motorRow = await rowOf('garagePanel', 'segments', 'Motor');
+  const motorItem = await page.evaluate((r) => window.__game.vr.garagePanel.rows[r].items.findIndex((i) => (typeof i.text === 'function' ? i.text() : i.text) === 'Motor'), motorRow);
+  await aim('garagePanel', motorRow, motorItem);
+  await page.waitForFunction(() => window.__game.garage.tab === 4, null, { timeout: 30000, polling: 100 });
+  const raceRow = await rowOf('garagePanel', 'segments', 'Competição');
+  const raceItem = await page.evaluate((r) => window.__game.vr.garagePanel.rows[r].items.findIndex((i) => (typeof i.text === 'function' ? i.text() : i.text) === 'Competição'), raceRow);
+  await aim('garagePanel', raceRow, raceItem);
+  await page.waitForFunction(() => window.__game.vehicle.params.engine.turbo.maxBoost > 1.5, null, { timeout: 30000, polling: 100 });
+  assert(true, 'turbo de competição em VR');
+  await page.screenshot({ path: 'test-results/vr-03-garagem.png' });
+
+  // Y fecha a garagem.
+  await holdFrames('y-button', 1);
+  await page.waitForFunction(() => !window.__game.garage.open && !window.__game.vr.garagePanelOpen, null, { timeout: 30000, polling: 100 });
+  assert(true, 'Y fecha a garagem');
 
   assert(errors.length === 0, `sem erros no console ${errors.length ? JSON.stringify(errors.slice(0, 5)) : ''}`);
 } catch (e) {

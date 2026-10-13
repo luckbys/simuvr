@@ -60,7 +60,11 @@ export class DesktopInput {
   }
 
   private onKey(e: KeyboardEvent, down: boolean): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      // Com a garagem aberta o teclado de direção fica desligado, mas G continua fechando.
+      if (down && !e.repeat && e.code === 'KeyG') this.actions.toggleGarage = true;
+      return;
+    }
     if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
     const c = e.code;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(c)) e.preventDefault();

@@ -10,9 +10,10 @@
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/run.mjs && node tests/e2e/vr.mjs",
+    "test:e2e": "node tests/e2e/run.mjs && node tests/e2e/garage.mjs && node tests/e2e/vr.mjs",
     "test:e2e:desktop": "node tests/e2e/run.mjs",
-    "test:e2e:vr": "node tests/e2e/vr.mjs"
+    "test:e2e:vr": "node tests/e2e/vr.mjs",
+    "test:e2e:garage": "node tests/e2e/garage.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
