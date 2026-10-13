@@ -8,7 +8,7 @@ async function boot(): Promise<void> {
   const vr = $<HTMLButtonElement>('btn-vr');
   const start = $('start');
 
-  const game = new Game($('app'));
+  const game = await Game.create($('app'));
   (window as unknown as { __game: Game }).__game = game;
 
   const xrState = await game.xr.detect();
