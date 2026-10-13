@@ -15,6 +15,8 @@ import { makeNightEnvironment } from './city/envMap';
 import { buildTestArena } from './city/testArena';
 import { buildCity, type City } from './city/city';
 import { Hud } from './ui/hud';
+import { Cockpit } from './car/cockpit';
+import { VrMode } from './xr/vrMode';
 
 export class Game {
   readonly quality: QualitySettings;
@@ -31,6 +33,8 @@ export class Game {
   readonly city: City | null;
   readonly cameras: CameraRig;
   readonly hud = new Hud();
+  readonly cockpit: Cockpit;
+  vr: VrMode | null = null;
 
   tuning: TuningState = defaultTuning();
 
@@ -96,6 +100,25 @@ export class Game {
     this.carView.setEnvironment(this.env);
     scene.add(this.carView.root);
     this.addHeadlights();
+    this.cockpit = new Cockpit(this.carView, this.quality.rearMirror);
+
+    // Sessão VR: cria o modo VR sob demanda e devolve a câmera ao desktop ao sair.
+    this.xr.onStart = () => {
+      this.vr ??= new VrMode({
+        renderer: this.ctx.renderer,
+        scene: this.ctx.scene,
+        camera: this.ctx.camera,
+        carView: this.carView,
+        vehicle: this.vehicle,
+        quality: this.quality,
+        layout: this.city?.layout ?? null,
+        setAutoGear: (a) => { this.vehicle.options.autoGear = a; },
+        debugText: () => this.debug.summary,
+        exitVr: () => this.xr.exit(),
+      });
+      this.vr.onSessionStart();
+    };
+    this.xr.onEnd = () => this.vr?.onSessionEnd();
   }
 
   static async create(host: HTMLElement): Promise<Game> {
@@ -145,37 +168,62 @@ export class Game {
     this.ctx.renderer.setAnimationLoop((now) => this.frame(now));
   }
 
+  private readonly skyPos = new THREE.Vector3();
+
   private frame(now: number): void {
     const dt = Math.min((now - this.last) / 1000, 0.1);
     this.last = now;
+    const { renderer } = this.ctx;
+    renderer.info.reset();
+    const presenting = renderer.xr.isPresenting && this.vr !== null;
 
     const a = this.input.consumeActions();
     if (a.toggleDebug) this.debug.toggle();
-    if (a.toggleCamera) this.cameras.cycle();
+    if (a.toggleCamera && !presenting) this.cameras.cycle();
     if (a.reset) this.resetCar();
 
-    const src = this.input.poll(dt);
-    Object.assign(this.drive, src);
-    this.shiftUpPending ||= src.shiftUp;
-    this.shiftDownPending ||= src.shiftDown;
+    // Entrada: VR (controles) ou desktop (teclado/gamepad).
+    if (presenting) {
+      this.vr!.pollInput(dt, this.drive);
+      this.shiftUpPending ||= this.drive.shiftUp;
+      this.shiftDownPending ||= this.drive.shiftDown;
+    } else {
+      const src = this.input.poll(dt);
+      Object.assign(this.drive, src);
+      this.shiftUpPending ||= src.shiftUp;
+      this.shiftDownPending ||= src.shiftDown;
+    }
 
     const alpha = this.stepper.advance(dt);
     this.world.sync();
-    this.city?.sky.position.copy(this.ctx.camera.position);
     this.carView.update(this.vehicle, alpha);
+
+    // Volante visual no PC: acompanha o esterço (±270°).
+    if (!presenting) {
+      const max = this.vehicle.params.steering.maxAngleRad || 1;
+      this.carView.setWheelAngle((this.vehicle.steerAngle / max) * ((270 * Math.PI) / 180));
+    }
 
     this.carPos.copy(this.carView.root.position);
     this.carQuat.copy(this.carView.root.quaternion);
-    if (!this.ctx.renderer.xr.isPresenting) {
+    if (presenting) {
+      this.vr!.placeRig(dt);
+    } else {
       this.cameras.update(dt, this.vehicle, this.carPos, this.carQuat, this.carView.driverEye);
     }
+
+    this.cockpit.update(dt, this.vehicle);
+    if (presenting || this.cameras.mode === 'cockpit') this.cockpit.renderMirror(renderer, this.ctx.scene);
+
+    this.ctx.camera.getWorldPosition(this.skyPos);
+    this.city?.sky.position.copy(this.skyPos);
     this.hud.update(dt, this.vehicle);
     this.debug.setExtra(
       `v ${this.vehicle.speedKmh.toFixed(0)} km/h  rpm ${this.vehicle.rpm.toFixed(0)}  g ${this.vehicle.gearbox.gear}\n` +
         `gLat ${this.vehicle.gLat.toFixed(2)}  slip ${this.vehicle.maxSlip.toFixed(2)}  boost ${this.vehicle.turbo.boost.toFixed(2)}`,
     );
 
-    this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
+    renderer.render(this.ctx.scene, this.ctx.camera);
     this.debug.tick(dt);
   }
 }

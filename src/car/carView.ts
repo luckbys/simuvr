@@ -65,15 +65,26 @@ export class CarView {
   readonly driverEye = new THREE.Vector3();
   readonly steeringWheelPos = new THREE.Vector3();
   readonly steeringWheel: THREE.Mesh;
+  /** Pivô do volante (posição e inclinação); o giro é feito na malha `steeringWheel`. */
+  readonly wheelPivot = new THREE.Group();
+  /** Referencial do volante no chassi: centro, normal (para o motorista), 12 horas e 3 horas. */
+  readonly wheelFrame = {
+    center: new THREE.Vector3(),
+    normal: new THREE.Vector3(0, 0, 1),
+    up: new THREE.Vector3(0, 1, 0),
+    right: new THREE.Vector3(1, 0, 0),
+    radius: 0.17,
+  };
 
   private readonly paintMat = new THREE.MeshPhysicalMaterial();
   private readonly glassMat = new THREE.MeshPhysicalMaterial({ color: 0x07090d, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.85 });
   private readonly trimMat = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.6, metalness: 0.2 });
+  private readonly wheelMat = new THREE.MeshStandardMaterial({ color: 0x1b1b24, roughness: 0.55, metalness: 0.3, emissive: 0x0a0a10 });
   private readonly tireMat = new THREE.MeshStandardMaterial({ color: 0x08080a, roughness: 0.92, metalness: 0 });
   private readonly rimMat = new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.28, metalness: 0.95 });
   private readonly headMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff2d8).multiplyScalar(2.5) });
   private readonly tailMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff1020).multiplyScalar(1.6) });
-  private readonly intMat = new THREE.MeshStandardMaterial({ color: 0x15151c, roughness: 0.8, metalness: 0.05, side: THREE.DoubleSide });
+  private readonly intMat = new THREE.MeshStandardMaterial({ color: 0x2a2a36, roughness: 0.8, metalness: 0.05, side: THREE.DoubleSide, emissive: 0x0c0c14 });
   private readonly exhaustMat = new THREE.MeshStandardMaterial({ color: 0xaab0ba, roughness: 0.3, metalness: 1 });
   private readonly underglowMat = additiveMaterial(0x27e8ff, 0.9);
   private readonly underglow: THREE.Mesh;
@@ -134,14 +145,28 @@ export class CarView {
     this.underglow = ug;
 
     // Volante (posição do cockpit, referencial do chassi; frente do carro = -Z, motorista à esquerda).
-    this.steeringWheel = new THREE.Mesh(g.steeringWheel, this.trimMat);
+    this.steeringWheel = new THREE.Mesh(g.steeringWheel, this.wheelMat);
     this.steeringWheelPos.set(-0.36, 0.7 - spec.comHeight, -0.34);
-    this.steeringWheel.position.copy(this.steeringWheelPos);
-    this.steeringWheel.rotation.x = -0.7;
-    this.root.add(this.steeringWheel);
+    this.wheelPivot.position.copy(this.steeringWheelPos);
+    const tilt = -0.7;
+    this.wheelPivot.rotation.x = tilt;
+    this.wheelPivot.add(this.steeringWheel);
+    this.root.add(this.wheelPivot);
     this.driverEye.set(-0.36, 1.12 - spec.comHeight, 0.12);
+    // Eixos do volante no chassi (inclinação em X): normal aponta para o motorista (+Z e para cima).
+    const qt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), tilt);
+    this.wheelFrame.center.copy(this.steeringWheelPos);
+    this.wheelFrame.normal.set(0, 0, 1).applyQuaternion(qt);
+    this.wheelFrame.up.set(0, 1, 0).applyQuaternion(qt);
+    // 3 horas do ponto de vista do motorista (olhando em -normal): (-n) × up.
+    this.wheelFrame.right.crossVectors(this.wheelFrame.normal.clone().negate(), this.wheelFrame.up).normalize();
 
     this.setLook(this.look);
+  }
+
+  /** Gira o volante: `phi` em rad, positivo = sentido horário visto pelo motorista (esterço à direita). */
+  setWheelAngle(phi: number): void {
+    this.steeringWheel.rotation.z = -phi;
   }
 
   /** Aplica um visual novo (tinta, aros, spoiler, neon). */
@@ -160,7 +185,7 @@ export class CarView {
   }
 
   setEnvironment(env: THREE.Texture | null): void {
-    for (const m of [this.paintMat, this.glassMat, this.trimMat, this.tireMat, this.rimMat, this.intMat, this.exhaustMat]) {
+    for (const m of [this.paintMat, this.glassMat, this.trimMat, this.tireMat, this.rimMat, this.intMat, this.exhaustMat, this.wheelMat]) {
       (m as THREE.MeshStandardMaterial).envMap = env;
       (m as THREE.MeshStandardMaterial).envMapIntensity = m === this.paintMat || m === this.glassMat ? 1.4 : 0.8;
       m.needsUpdate = true;

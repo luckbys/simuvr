@@ -19,6 +19,8 @@ export function createRenderer(host: HTMLElement, q: QualitySettings): RenderCon
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = false;
+  // O retrovisor faz um segundo render por quadro: as estatísticas são zeradas manualmente.
+  renderer.info.autoReset = false;
 
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType('local-floor');
