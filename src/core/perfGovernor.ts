@@ -34,7 +34,7 @@ export const DEFAULT_PERF: PerfOptions = {
 export const PERF_LEVELS: ReadonlyArray<{ level: PerfLevel; disables: string[] }> = [
   { level: 1, disables: ['retrovisor', 'chuva'] },
   { level: 2, disables: ['faróis reais (SpotLight)', 'metade da fumaça'] },
-  { level: 3, disables: ['fumaça', 'faíscas', 'marcas de pneu'] },
+  { level: 3, disables: ['fumaça', 'faíscas', 'marcas de pneu', 'reflexo de ambiente nos prédios'] },
 ];
 
 export class PerfGovernor {

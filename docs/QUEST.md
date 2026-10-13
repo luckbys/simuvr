@@ -45,6 +45,21 @@ Modelo (3 ou 3S), versão do Browser, tier, fps nos pontos acima, o que causou e
 do volante (peso, precisão), e capturas se possível. Com isso dá para calibrar curso do volante, retorno,
 vinheta e orçamento gráfico.
 
+## Ajuste fino direto pela URL
+
+Dá para iterar no navegador do Quest sem rebuild, acrescentando parâmetros ao endereço:
+
+| Parâmetro | Efeito | Faixa |
+|---|---|---|
+| `?q=low` / `?q=high` | tier de qualidade | — |
+| `&scale=0.7` | escala do framebuffer XR (resolução) | 0,5 – 1,5 |
+| `&fove=1` | foveated rendering (1 = máximo) | 0 – 1 |
+| `&rate=90` | taxa-alvo do headset | 60 – 144 |
+| `&hz=60` | passo da física | 60 – 144 |
+| `&rain=0` | desliga a chuva | 0 / 1 |
+
+Exemplo: `https://<ip>:5173/?q=low&scale=0.7&fove=1`. Se o fps cair, comece baixando `scale` (0,8 → 0,7 → 0,6).
+
 ## Dicas
 
 - Console remoto: `chrome://inspect` no PC com o Quest conectado por ADB.

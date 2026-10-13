@@ -97,3 +97,28 @@ export function storedQuality(): QualityName | null {
     return null;
   }
 }
+
+/**
+ * Ajustes finos por URL, para iterar direto no navegador do Quest sem rebuild:
+ *   ?scale=0.7  escala do framebuffer XR (0,5–1,5)      ?fove=1   foveation (0–1)
+ *   ?rate=90    taxa-alvo do headset (72/90/120 Hz)     ?hz=60    passo da física (60–144 Hz)
+ * Valores inválidos são ignorados.
+ */
+export function applyOverrides(q: QualitySettings, params: URLSearchParams = new URLSearchParams(location.search)): QualitySettings {
+  const num = (k: string, lo: number, hi: number): number | null => {
+    const raw = params.get(k);
+    if (raw === null || raw.trim() === '') return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v >= lo && v <= hi ? v : null;
+  };
+  const out = { ...q };
+  const scale = num('scale', 0.5, 1.5);
+  if (scale !== null) out.xrFramebufferScale = scale;
+  const fove = num('fove', 0, 1);
+  if (fove !== null) out.foveation = fove;
+  const rate = num('rate', 60, 144);
+  if (rate !== null) out.xrFrameRate = rate;
+  const hz = num('hz', 60, 144);
+  if (hz !== null) out.physicsHz = hz;
+  return out;
+}

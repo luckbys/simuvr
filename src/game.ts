@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createRenderer, type RenderContext } from './core/renderer';
-import { QUALITY, loadQuality, type QualitySettings } from './core/quality';
+import { QUALITY, applyOverrides, loadQuality, type QualitySettings } from './core/quality';
 import { FixedStepper } from './core/loop';
 import { DesktopInput, emptyInput, type DriveInput } from './core/input';
 import { DebugHud } from './core/debugHud';
@@ -60,7 +60,7 @@ export class Game {
 
   private constructor(host: HTMLElement, physics: PhysicsWorld) {
     this.physics = physics;
-    this.quality = QUALITY[loadQuality()];
+    this.quality = applyOverrides(QUALITY[loadQuality()]);
     this.ctx = createRenderer(host, this.quality);
     this.debug = new DebugHud(this.ctx.renderer);
     this.xr = new XrSessionManager(this.ctx.renderer, this.quality);
@@ -200,6 +200,10 @@ export class Game {
     this.cockpit.mirrorEnabled = level < 1;
     this.fx.setLevel(level);
     for (const l of this.headlights) l.visible = level < 2;
+    // Nível 3: sem reflexo de ambiente nos prédios (a maior área de tela); a rua e o carro mantêm o seu (envMap próprio).
+    const lite = level >= 3;
+    this.ctx.scene.environment = lite ? null : this.env;
+    this.city?.setLiteShading(lite, this.env);
     console.info(`[desempenho] nível ${level} (média ${this.perf.avgMs.toFixed(1)} ms)`);
   }
 

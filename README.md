@@ -6,7 +6,7 @@ física de veículo própria (pneu Pacejka, turbo, câmbio, diferencial). Feito 
 rodando no navegador do **Meta Quest 3/3S** e no PC.
 
 > **Estado:** todos os recursos abaixo estão implementados e cobertos por testes automatizados
-> (132 unitários + 6 suítes E2E, incluindo VR emulado). **Ainda não foi testado num Quest real**: desempenho,
+> (137 unitários + 6 suítes E2E, incluindo VR emulado). **Ainda não foi testado num Quest real**: desempenho,
 > conforto e a sensação do volante precisam ser validados no aparelho (veja [docs/QUEST.md](docs/QUEST.md)).
 
 ## Início rápido
@@ -78,13 +78,14 @@ Medido pelo teste `test:e2e:quality` (quadro mono; em VR são dois olhos):
 
 Foveated rendering no máximo, escala de framebuffer 0,8 (baixo), 72 Hz. Em VR um **governador de
 desempenho** (`src/core/perfGovernor.ts`) desliga recursos por etapas se o headset ficar abaixo da taxa
-(nível 1 retrovisor e chuva → 2 faróis reais e metade da fumaça → 3 partículas) e reativa com folga.
+(nível 1 retrovisor e chuva → 2 faróis reais e metade da fumaça → 3 partículas e reflexo de ambiente nos prédios) e
+reativa com folga. Para ajustar no aparelho há parâmetros de URL (`?scale=0.7&fove=1&rate=90`, veja [docs/QUEST.md](docs/QUEST.md)).
 
 ## Testes
 
 ```bash
 npm run typecheck
-npm test                 # 132 testes unitários (física a 120/90/60 Hz, tuning, cidade, volante, garagem, áudio, desempenho)
+npm test                 # 137 testes unitários (física a 120/90/60 Hz, tuning, cidade, volante, garagem, áudio, desempenho)
 npm run test:e2e         # Chromium headless: PC, qualidade, garagem, áudio/efeitos, VR emulado e VR a pé
 ```
 

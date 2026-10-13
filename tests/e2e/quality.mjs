@@ -56,6 +56,32 @@ try {
   assert(low.r.tris <= 350000, `tier baixo ≤ 350 mil triângulos (${low.r.tris})`);
   assert(high.r.calls <= 130, `tier alto ≤ 130 draw calls (${high.r.calls})`);
   assert(low.errors.length === 0 && high.errors.length === 0, `sem erros no console ${JSON.stringify([...low.errors, ...high.errors].slice(0, 4))}`);
+
+  // ---- Ajuste por URL e degradação máxima do governador (recompila shaders) ----
+  const page = await (await browser.newContext({ viewport: { width: 960, height: 540 } })).newPage();
+  const errors = collectErrors(page);
+  await page.goto(`${URL_BASE}?q=low&scale=0.7&fove=0.5&rate=90&hz=60`);
+  await page.waitForFunction(() => !document.getElementById('btn-play').disabled, null, { timeout: 90000 });
+  await page.click('#btn-play');
+  const frames = (n = 2) => page.evaluate((k) => new Promise((resolve) => { let i = 0; const t = () => (++i >= k ? resolve() : requestAnimationFrame(t)); requestAnimationFrame(t); }), n);
+  const ov = await page.evaluate(() => { const q = window.__game.quality; return { scale: q.xrFramebufferScale, fove: q.foveation, rate: q.xrFrameRate, hz: q.physicsHz, stepHz: window.__game.stepper.hz, name: q.name }; });
+  assert(ov.scale === 0.7 && ov.fove === 0.5 && ov.rate === 90 && ov.hz === 60 && ov.stepHz === 60 && ov.name === 'low', `?scale/fove/rate/hz sobrescrevem o tier (${JSON.stringify(ov)})`);
+
+  const lvl = await page.evaluate(async () => {
+    const g = window.__game;
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const envBefore = !!g.ctx.scene.environment;
+    g.applyPerfLevel(3);
+    await frame(); await frame();
+    const lite = { env: g.ctx.scene.environment === null, smoke: g.fx.smoke.mesh.visible, marks: g.fx.marks.mesh.visible, mirror: g.cockpit.mirrorEnabled, calls: g.ctx.renderer.info.render.calls };
+    g.applyPerfLevel(0);
+    await frame(); await frame();
+    return { envBefore, lite, restored: !!g.ctx.scene.environment, smoke: g.fx.smoke.mesh.visible, marks: g.fx.marks.mesh.visible, mirror: g.cockpit.mirrorEnabled };
+  });
+  assert(lvl.envBefore && lvl.lite.env && !lvl.lite.smoke && !lvl.lite.marks && !lvl.lite.mirror, `nível 3 desliga IBL, fumaça, marcas e retrovisor (${JSON.stringify(lvl.lite)})`);
+  assert(lvl.restored && lvl.smoke && lvl.marks, 'voltar ao nível 0 restaura tudo');
+  await page.screenshot({ path: 'test-results/quality-level0.png' });
+  assert(errors.length === 0, `sem erros ao degradar/restaurar (${JSON.stringify(errors.slice(0, 3))})`);
 } catch (e) {
   failed = true;
   console.error(e.message);

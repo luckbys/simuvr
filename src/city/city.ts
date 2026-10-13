@@ -21,6 +21,11 @@ export interface City {
   sky: THREE.Group;
   /** Atualiza o que depende do estado da física (cones). */
   sync(): void;
+  /**
+   * Sombreamento leve: tira o reflexo de ambiente (IBL) dos prédios, a maior área de tela. Quem chama deve também
+   * zerar `scene.environment`, senão os materiais sem `envMap` próprio usam o do cenário.
+   */
+  setLiteShading(on: boolean, env: THREE.Texture | null): void;
   /** Captura o cubemap real da cidade a partir do ponto de encontro e devolve o ambiente PMREM. */
   captureEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene, size: number): THREE.Texture;
 }
@@ -32,6 +37,7 @@ export function buildCity(pw: PhysicsWorld, quality: QualitySettings, env: THREE
 
   for (const o of buildRoads(layout, env)) group.add(o);
   const b = buildBuildings(layout.buildings, env);
+  const buildingMat = b.mesh.material as THREE.MeshStandardMaterial;
   group.add(b.mesh, ...b.extras);
   for (const o of buildSigns(layout.signs)) group.add(o);
   for (const o of buildLamps(layout.lamps)) group.add(o);
@@ -91,6 +97,10 @@ export function buildCity(pw: PhysicsWorld, quality: QualitySettings, env: THREE
     sync: () => {
       cones.sync();
       barrels.sync();
+    },
+    setLiteShading(on, envTex) {
+      buildingMat.envMap = on ? null : envTex;
+      buildingMat.needsUpdate = true;
     },
     captureEnvironment(renderer, scene, size) {
       const rt = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
